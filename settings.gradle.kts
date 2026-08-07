@@ -22,5 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "one-ring"
-include(":app")
+rootProject.name = "one-ring-workspace"
+include(":one-ring")
+include(":sample")
