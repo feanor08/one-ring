@@ -7,6 +7,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import com.feanor08.onering.geometry.AngularSpan
+import com.feanor08.onering.geometry.SubmenuLayout
 import com.feanor08.onering.geometry.polarOffset
 import org.junit.Rule
 import org.junit.Test
@@ -145,5 +147,68 @@ class OneRingInteractionTest {
 
         assert(state.path.isEmpty()) { "expected empty path after closing, was ${state.path}" }
         assert(state.mode == OneRingMode.Idle) { "expected Idle after closing, was ${state.mode}" }
+    }
+
+    @Test fun selectingASubmenuChildFiresOnActionAndClosesBackToIdle() {
+        val menuItems = listOf(
+            OneRingItem.Menu(
+                id = "menu",
+                label = "Menu",
+                children = listOf(
+                    OneRingItem.Action(id = "child0", label = "Child0"),
+                    OneRingItem.Action(id = "child1", label = "Child1"),
+                    OneRingItem.Action(id = "child2", label = "Child2"),
+                ),
+            ),
+            OneRingItem.Action(id = "b", label = "B"),
+            OneRingItem.Action(id = "c", label = "C"),
+        )
+        val sizeDp = 300
+        lateinit var state: OneRingState
+        var lastAction: String? = null
+
+        composeRule.setContent {
+            state = rememberOneRingState()
+            OneRing(
+                items = menuItems,
+                onAction = { lastAction = it.id },
+                state = state,
+                modifier = Modifier.size(sizeDp.dp),
+            )
+        }
+
+        val parentPoint = pointInWedge(index = 0, count = menuItems.size, sizeDp = sizeDp)
+        composeRule.onRoot().performTouchInput {
+            down(parentPoint)
+            up()
+        }
+        composeRule.waitForIdle()
+        assert(state.path == listOf("menu")) { "expected path=[menu], was ${state.path}" }
+
+        // Compute the first child's wedge midpoint the same way the library
+        // does (SubmenuLayout, the same defaults OneRing itself uses).
+        val parentSweep = 360f / menuItems.size
+        val parentSpan = AngularSpan(-parentSweep / 2f, parentSweep)
+        val defaults = OneRingDefaults.dimensions()
+        val childSpans = SubmenuLayout.spans(
+            parent = parentSpan,
+            childCount = 3,
+            maxChildSweepDeg = defaults.maxSubmenuItemSweepDeg,
+            alignment = defaults.submenuAlignment,
+        )
+        val childMidDeg = childSpans[0].midDeg
+        val submenuMidRadiusFraction = (0.280f + 0.512f) / 2f // OneRingDefaults submenuInner/submenuOuter
+        val offset = polarOffset(sizeDp * submenuMidRadiusFraction, childMidDeg)
+        val childPoint = Offset(sizeDp / 2f + offset.x, sizeDp / 2f + offset.y)
+
+        composeRule.onRoot().performTouchInput {
+            down(childPoint)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        assert(lastAction == "child0") { "expected commit on child0, got $lastAction" }
+        assert(state.path.isEmpty()) { "expected the submenu to close after a child commit, was ${state.path}" }
+        assert(state.mode == OneRingMode.Idle) { "expected Idle after child commit, was ${state.mode}" }
     }
 }

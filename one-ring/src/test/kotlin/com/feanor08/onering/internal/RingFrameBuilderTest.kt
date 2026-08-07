@@ -6,6 +6,7 @@ import com.feanor08.onering.OneRingIcon
 import com.feanor08.onering.OneRingItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RingFrameBuilderTest {
@@ -95,5 +96,73 @@ class RingFrameBuilderTest {
         )
         assertEquals(0f, frame.arcs.first { it.itemIndex == 1 }.alpha, 0f)
         assertEquals(1f, frame.arcs.first { it.itemIndex == 0 }.alpha, 0f)
+    }
+
+    @Test fun `submenu arcs are pinned at the outer edge and expand inward as reveal rises`() {
+        val resolved = resolveRing(Size(600f, 600f), density, OneRingDefaults.dimensions(), itemCount = 6)
+        val parentSpan = resolved.mainSpans[0]
+        val children = items(3)
+
+        val start = RingFrameBuilder.buildSubmenuArcs(
+            children,
+            parentSpan,
+            resolved,
+            OneRingDefaults.dimensions(),
+            colors,
+            reveal = 0f,
+            expansionOf = { 0f },
+        )
+        val mid = RingFrameBuilder.buildSubmenuArcs(
+            children,
+            parentSpan,
+            resolved,
+            OneRingDefaults.dimensions(),
+            colors,
+            reveal = 0.5f,
+            expansionOf = { 0f },
+        )
+        val settled = RingFrameBuilder.buildSubmenuArcs(
+            children,
+            parentSpan,
+            resolved,
+            OneRingDefaults.dimensions(),
+            colors,
+            reveal = 1f,
+            expansionOf = { 0f },
+        )
+
+        // outer edge is pinned at the submenu's outer radius throughout
+        listOf(start, mid, settled).forEach { arcs ->
+            arcs.forEach { assertEquals(resolved.submenuOuterPx, it.band.outerPx, 0.01f) }
+        }
+        // inner radius animates inward: thin strip (inner == outer) at reveal=0,
+        // full thickness (inner == submenuInnerPx) once settled
+        assertEquals(resolved.submenuOuterPx, start[0].band.innerPx, 0.01f)
+        assertEquals(resolved.submenuInnerPx, settled[0].band.innerPx, 0.01f)
+        assertTrue(mid[0].band.innerPx in resolved.submenuInnerPx..resolved.submenuOuterPx)
+
+        // alpha fades in together with reveal
+        assertEquals(0f, start[0].alpha, 0.01f)
+        assertEquals(1f, settled[0].alpha, 0.01f)
+    }
+
+    @Test fun `submenu children divide the parent's angular complement`() {
+        val resolved = resolveRing(Size(600f, 600f), density, OneRingDefaults.dimensions(), itemCount = 6)
+        val parentSpan = resolved.mainSpans[0] // 60deg wide
+        val children = items(4)
+
+        val arcs = RingFrameBuilder.buildSubmenuArcs(
+            children,
+            parentSpan,
+            resolved,
+            OneRingDefaults.dimensions(),
+            colors,
+            reveal = 1f,
+            expansionOf = { 0f },
+        )
+
+        assertEquals(4, arcs.size)
+        val totalSweep = arcs.sumOf { it.span.sweepDeg.toDouble() }.toFloat()
+        assertTrue("expected close to 300deg (360 - 60 parent), was $totalSweep", totalSweep in 295f..300f)
     }
 }

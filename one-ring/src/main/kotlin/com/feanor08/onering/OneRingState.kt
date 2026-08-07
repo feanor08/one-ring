@@ -1,5 +1,6 @@
 package com.feanor08.onering
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -49,6 +50,16 @@ public class OneRingState internal constructor(initialPath: List<String>) {
         }
 
     internal val animations: RingAnimations = RingAnimations()
+
+    /**
+     * A single shared reveal progress (0..1) for the currently open submenu:
+     * children start as a thin strip pinned at the submenu's outer radius and
+     * expand inward as this rises, exactly matching the reference prototype
+     * (see docs/interaction-spec.md). This is one shared value, not per-item,
+     * because it's one continuous choreography affecting every child at once.
+     */
+    internal val submenuReveal: Animatable<Float, *> = Animatable(0f)
+
     internal lateinit var scope: CoroutineScope
 
     /** Input is gated to nothing but a fresh down while any phase other than [Settled] is active. */

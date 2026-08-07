@@ -3,19 +3,23 @@ package com.feanor08.onering.internal
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
 import com.feanor08.onering.OneRingItem
 import com.feanor08.onering.OneRingState
+import com.feanor08.onering.geometry.AngularSpan
 import com.feanor08.onering.geometry.HitTest
 import com.feanor08.onering.geometry.RadialBand
 import com.feanor08.onering.geometry.angleOfOffset
 import com.feanor08.onering.style.OneRingBehavior
+import com.feanor08.onering.style.OneRingDimensions
 import com.feanor08.onering.style.OneRingMotion
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
 
 /**
- * Drives press-scrub-release highlighting and the main-ring selection
+ * Drives press-scrub-release highlighting and the open/close selection
  * transition from a low-level pointer loop (`awaitEachGesture`, not
  * `detectDragGestures`, which applies touch slop the interaction can't afford
  * -- see docs/PLAN.md section 9.1). One instance is created per [OneRingState]
@@ -23,13 +27,14 @@ import kotlin.math.hypot
  * restarted; [update] refreshes its view of the current items/geometry/style/
  * callback each frame instead.
  *
- * Submenu content itself (rendering a committed Menu's children) is Phase 5;
- * this phase only drives the parent wedge's own selected/close-control
- * transition and fades its top-level siblings out.
+ * Only one level of nesting is interactive so far (a committed submenu leaf
+ * fires [onAction] and closes back to the top level); deeper nesting is a
+ * later phase.
  */
 internal class RingInteractionController(private val state: OneRingState) {
     private var items: List<OneRingItem> = emptyList()
     private var resolved: ResolvedRing? = null
+    private var dimensions: OneRingDimensions? = null
     private var motion: OneRingMotion? = null
     private var behavior: OneRingBehavior? = null
     private var onAction: (OneRingItem.Action) -> Unit = {}
@@ -37,12 +42,14 @@ internal class RingInteractionController(private val state: OneRingState) {
     fun update(
         items: List<OneRingItem>,
         resolved: ResolvedRing,
+        dimensions: OneRingDimensions,
         motion: OneRingMotion,
         behavior: OneRingBehavior,
         onAction: (OneRingItem.Action) -> Unit,
     ) {
         this.items = items
         this.resolved = resolved
+        this.dimensions = dimensions
         this.motion = motion
         this.behavior = behavior
         this.onAction = onAction
@@ -62,12 +69,6 @@ internal class RingInteractionController(private val state: OneRingState) {
         }
     }
 
-    private fun updateHighlight(position: Offset) {
-        val r = resolved ?: return
-        val hitIndex = hitTestMainRing(position, r)
-        setHighlight(hitIndex?.let { items.getOrNull(it)?.id })
-    }
-
     private fun hitTestMainRing(position: Offset, r: ResolvedRing): Int? {
         val dx = position.x - r.centerPx.x
         val dy = position.y - r.centerPx.y
@@ -80,13 +81,27 @@ internal class RingInteractionController(private val state: OneRingState) {
         return HitTest.hitWedge(angle, radius, r.mainSpans, band)
     }
 
+    private fun hitTestSubmenu(position: Offset, r: ResolvedRing, childSpans: List<AngularSpan>): Int? {
+        val dx = position.x - r.centerPx.x
+        val dy = position.y - r.centerPx.y
+        val angle = angleOfOffset(dx, dy)
+        val radius = hypot(dx, dy)
+        val band = RadialBand(
+            (r.submenuInnerPx - r.touchSlopRadialPx).coerceAtLeast(0f),
+            r.submenuHoverOuterPx + r.touchSlopRadialPx,
+        )
+        return HitTest.hitWedge(angle, radius, childSpans, band)
+    }
+
+    private fun parentSpanFor(parentId: String, r: ResolvedRing): AngularSpan? =
+        r.mainSpans.getOrNull(items.indexOfFirst { it.id == parentId })
+
     /** True (and a close transition started) if [position] hits the open parent's grown/selected wedge. */
     private fun tryClosePress(position: Offset): Boolean {
         val parentId = state.path.lastOrNull() ?: return false
         if (behavior?.closeOnParentPress != true) return false
         val r = resolved ?: return false
-        val parentIndex = items.indexOfFirst { it.id == parentId }
-        val span = r.mainSpans.getOrNull(parentIndex) ?: return false
+        val span = parentSpanFor(parentId, r) ?: return false
 
         val dx = position.x - r.centerPx.x
         val dy = position.y - r.centerPx.y
@@ -101,12 +116,31 @@ internal class RingInteractionController(private val state: OneRingState) {
 
     private fun commit() {
         val id = state.highlightedId ?: return
-        val item = items.firstOrNull { it.id == id }
         setHighlight(null)
-        when {
-            item is OneRingItem.Action && item.enabled -> onAction(item)
-            item is OneRingItem.Menu && item.enabled -> beginOpen(item)
-            // Seek commit (entering seek mode) arrives in Phase 6.
+        if (state.path.isNotEmpty()) {
+            commitSubmenuChild(id)
+        } else {
+            commitMainItem(id)
+        }
+    }
+
+    private fun commitMainItem(id: String) {
+        when (val item = items.firstOrNull { it.id == id }) {
+            is OneRingItem.Action -> if (item.enabled) onAction(item)
+            is OneRingItem.Menu -> if (item.enabled) beginOpen(item)
+            else -> Unit // Seek commit (entering seek mode) arrives in Phase 6.
+        }
+    }
+
+    private fun commitSubmenuChild(id: String) {
+        val (parent, children) = currentSubmenu(items, state.path) ?: return
+        when (val item = children.firstOrNull { it.id == id }) {
+            is OneRingItem.Action -> if (item.enabled) {
+                onAction(item)
+                beginClose(parent.id)
+            }
+            // Nested Menu/Seek within a submenu isn't interactive yet.
+            else -> Unit
         }
     }
 
@@ -118,6 +152,7 @@ internal class RingInteractionController(private val state: OneRingState) {
             state.scope.launch { state.animations.of(sibling.id).expansion.animateTo(0f, m.hover) }
             state.scope.launch { state.animations.of(sibling.id).contentAlpha.animateTo(0f, m.siblingExit) }
         }
+        state.scope.launch { state.submenuReveal.animateTo(1f, m.submenuReveal) }
 
         state.scope.launch {
             // The parent's own expansion animation is the single source of truth
@@ -139,11 +174,32 @@ internal class RingInteractionController(private val state: OneRingState) {
         items.asSequence().filter { it.id != parentId }.forEach { sibling ->
             state.scope.launch { state.animations.of(sibling.id).contentAlpha.animateTo(1f, m.siblingExit) }
         }
+        state.scope.launch { state.submenuReveal.animateTo(0f, m.submenuReveal) }
 
         state.scope.launch {
             state.animations.of(parentId).expansion.animateTo(0f, m.close)
             state.path = state.path.dropLast(1)
             state.phase = OneRingState.Phase.Settled
+        }
+    }
+
+    private suspend fun AwaitPointerEventScope.trackGesture(down: PointerInputChange, hitId: (Offset) -> String?) {
+        state.touching = true
+        setHighlight(hitId(down.position))
+        try {
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) {
+                    setHighlight(hitId(change.position))
+                    commit()
+                    break
+                }
+                setHighlight(hitId(change.position))
+                change.consume()
+            }
+        } finally {
+            state.touching = false
         }
     }
 
@@ -155,31 +211,20 @@ internal class RingInteractionController(private val state: OneRingState) {
             // Input is gated to nothing but a fresh down while a transition is
             // in flight -- see docs/PLAN.md section 6.3.
             if (state.phase != OneRingState.Phase.Settled) return@awaitEachGesture
-
             if (tryClosePress(down.position)) return@awaitEachGesture
 
-            // Inside a submenu, the only valid interaction (until Phase 5 renders
-            // its children) is pressing the close wedge, handled above.
-            if (state.path.isNotEmpty()) return@awaitEachGesture
+            val r = resolved ?: return@awaitEachGesture
 
-            state.touching = true
-            updateHighlight(down.position)
-
-            try {
-                while (true) {
-                    val event = awaitPointerEvent()
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if (!change.pressed) {
-                        updateHighlight(change.position)
-                        commit()
-                        break
-                    }
-                    updateHighlight(change.position)
-                    change.consume()
-                }
-            } finally {
-                state.touching = false
+            if (state.path.isEmpty()) {
+                trackGesture(down) { pos -> hitTestMainRing(pos, r)?.let { items.getOrNull(it)?.id } }
+                return@awaitEachGesture
             }
+
+            val d = dimensions ?: return@awaitEachGesture
+            val (parent, children) = currentSubmenu(items, state.path) ?: return@awaitEachGesture
+            val parentSpan = parentSpanFor(parent.id, r) ?: return@awaitEachGesture
+            val childSpans = submenuChildSpans(r, d, parentSpan, children.size)
+            trackGesture(down) { pos -> hitTestSubmenu(pos, r, childSpans)?.let { children[it].id } }
         }
     }
 }

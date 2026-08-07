@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import com.feanor08.onering.internal.RingFrameBuilder
 import com.feanor08.onering.internal.RingInteractionController
 import com.feanor08.onering.internal.RingPathPool
+import com.feanor08.onering.internal.currentSubmenu
 import com.feanor08.onering.internal.drawRing
 import com.feanor08.onering.internal.resolveRing
 import com.feanor08.onering.style.OneRingStyle
@@ -20,15 +21,17 @@ import com.feanor08.onering.style.OneRingStyle
  * A radial interaction wheel: press, scrub, release-to-commit -- not a set of
  * ordinary buttons layered on a canvas. Committing a leaf [OneRingItem.Action]
  * fires [onAction]; committing a [OneRingItem.Menu] grows it into the close
- * control and fades its siblings out, continuing smoothly from wherever its
- * hover animation currently was (no "selection stutter" -- see docs/PLAN.md
- * section 10). Rendering the submenu's own children and seek controls land in
- * later phases.
+ * control, fades its siblings out, and reveals its children as a submenu band
+ * (expanding inward from a thin strip at the submenu's outer radius -- see
+ * docs/interaction-spec.md), all continuing smoothly from wherever the hover
+ * animation currently was (no "selection stutter" -- see docs/PLAN.md section
+ * 10). Only one level of nesting renders/responds to input so far; seek
+ * controls land in a later phase.
  *
  * @param items the top-level wedges, in clockwise order starting at
  *   [com.feanor08.onering.style.OneRingDimensions.startAngleDeg].
  * @param onAction called when a leaf [OneRingItem.Action] is committed (released
- *   while highlighted).
+ *   while highlighted), at any nesting depth currently supported.
  * @param state navigation/highlight state; hoist with [rememberOneRingState] to
  *   observe or drive it programmatically.
  * @param style colors, sizes, and motion; see [OneRingDefaults.style].
@@ -60,15 +63,34 @@ public fun OneRing(
         if (canvasSize.width <= 0f || canvasSize.height <= 0f) return@Canvas
 
         val resolved = resolveRing(canvasSize, density, style.dimensions, items.size)
-        controller.update(items, resolved, style.motion, style.behavior, onAction)
+        controller.update(items, resolved, style.dimensions, style.motion, style.behavior, onAction)
 
-        val frame = RingFrameBuilder.build(
+        val expansionOf = { itemId: String -> state.animations.of(itemId).expansion.value }
+
+        var frame = RingFrameBuilder.build(
             items = items,
             resolved = resolved,
             colors = style.colors,
-            expansionOf = { itemId -> state.animations.of(itemId).expansion.value },
+            expansionOf = expansionOf,
             alphaOf = { itemId -> state.animations.of(itemId).contentAlpha.value },
         )
+
+        val submenu = currentSubmenu(items, state.path)
+        val parentIndex = submenu?.let { (parent, _) -> items.indexOfFirst { it.id == parent.id } }
+        val parentSpan = parentIndex?.let { resolved.mainSpans.getOrNull(it) }
+        if (submenu != null && parentSpan != null) {
+            val submenuArcs = RingFrameBuilder.buildSubmenuArcs(
+                children = submenu.second,
+                parentSpan = parentSpan,
+                resolved = resolved,
+                dimensions = style.dimensions,
+                colors = style.colors,
+                reveal = state.submenuReveal.value,
+                expansionOf = expansionOf,
+            )
+            frame = frame.copy(arcs = frame.arcs + submenuArcs)
+        }
+
         drawRing(frame, pathPool)
     }
 }

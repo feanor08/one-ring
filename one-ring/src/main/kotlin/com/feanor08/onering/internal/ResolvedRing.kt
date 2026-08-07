@@ -32,6 +32,7 @@ internal data class ResolvedRing(
     val sectorStrokeWidthPx: Float,
     val touchSlopRadialPx: Float,
     val mainSpans: List<AngularSpan>,
+    val submenuGapDeg: Float,
 ) {
     val mainBand: RadialBand get() = RadialBand(mainInnerPx, mainOuterPx)
 
@@ -45,7 +46,7 @@ internal data class ResolvedRing(
     fun submenuOuterFor(hover: Float): Float = lerp(submenuOuterPx, submenuHoverOuterPx, hover.coerceIn(0f, 1f))
 }
 
-private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+internal fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
 
 internal fun RadialSize.resolvePx(baseRadiusPx: Float, density: Density): Float = when (this) {
     is RadialSize.Fraction -> baseRadiusPx * value
@@ -73,6 +74,9 @@ internal fun resolveRing(sizePx: Size, density: Density, dimensions: OneRingDime
         centerFirstItem = true,
     )
 
+    val submenuOuterPx = dimensions.submenuOuter.resolvePx(baseRadius, density)
+    val submenuGapDeg = if (submenuOuterPx > 0f) (gapPx / submenuOuterPx) * (180f / Math.PI.toFloat()) else 0f
+
     return ResolvedRing(
         centerPx = center,
         baseRadiusPx = baseRadius,
@@ -81,11 +85,12 @@ internal fun resolveRing(sizePx: Size, density: Density, dimensions: OneRingDime
         mainHoverOuterPx = dimensions.mainHoverOuter.resolvePx(baseRadius, density),
         mainSelectedOuterPx = dimensions.mainSelectedOuter.resolvePx(baseRadius, density),
         submenuInnerPx = dimensions.submenuInner.resolvePx(baseRadius, density),
-        submenuOuterPx = dimensions.submenuOuter.resolvePx(baseRadius, density),
+        submenuOuterPx = submenuOuterPx,
         submenuHoverOuterPx = dimensions.submenuHoverOuter.resolvePx(baseRadius, density),
         centerRadiusPx = dimensions.centerRadius.resolvePx(baseRadius, density),
         sectorStrokeWidthPx = with(density) { dimensions.sectorStrokeWidth.toPx() },
         touchSlopRadialPx = with(density) { dimensions.touchSlopRadial.toPx() },
         mainSpans = mainSpans,
+        submenuGapDeg = submenuGapDeg,
     )
 }
