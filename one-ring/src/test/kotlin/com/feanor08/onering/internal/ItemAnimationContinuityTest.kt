@@ -59,9 +59,10 @@ class ItemAnimationContinuityTest {
             assertTrue("already finished: $midFlightValue", midFlightValue < 0.95f)
             job.cancel()
 
-            // Interrupt: retarget toward "selected" (2f), exactly like commit() does
-            // in RingInteractionController. animateTo() on an already-animating
-            // Animatable cancels the previous animation and continues from here.
+            // Interrupt: retarget toward "selected" (2f), exactly what
+            // RingInteractionController.beginOpen() does on commit (Phase 4).
+            // animateTo() on an already-animating Animatable cancels the
+            // previous animation and continues from here.
             launch { animation.expansion.animateTo(targetValue = 2f, animationSpec = spec) }
             advanceTimeBy(16) // one more frame
             runCurrent()

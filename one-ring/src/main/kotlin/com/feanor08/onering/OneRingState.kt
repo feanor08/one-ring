@@ -13,12 +13,13 @@ import kotlinx.coroutines.CoroutineScope
 
 /**
  * The ring's current interaction mode. Grows as later phases add real
- * behavior for each state (Submenu, Seek, Transitioning); kept to what's
- * actually implemented so far.
+ * behavior for each state (Seek); kept to what's actually implemented so far.
  */
 public enum class OneRingMode {
     Idle,
     Tracking,
+    Transitioning,
+    Submenu,
 }
 
 /**
@@ -37,12 +38,25 @@ public class OneRingState internal constructor(initialPath: List<String>) {
         internal set
 
     internal var touching: Boolean by mutableStateOf(false)
+    internal var phase: Phase by mutableStateOf(Phase.Settled)
 
     public val mode: OneRingMode
-        get() = if (touching) OneRingMode.Tracking else OneRingMode.Idle
+        get() = when {
+            phase != Phase.Settled -> OneRingMode.Transitioning
+            path.isNotEmpty() -> OneRingMode.Submenu
+            touching -> OneRingMode.Tracking
+            else -> OneRingMode.Idle
+        }
 
     internal val animations: RingAnimations = RingAnimations()
     internal lateinit var scope: CoroutineScope
+
+    /** Input is gated to nothing but a fresh down while any phase other than [Settled] is active. */
+    internal sealed interface Phase {
+        object Settled : Phase
+        data class Opening(val parentId: String) : Phase
+        data class Closing(val parentId: String) : Phase
+    }
 
     public companion object {
         internal val Saver: Saver<OneRingState, List<String>> = Saver(

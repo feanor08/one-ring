@@ -18,9 +18,12 @@ import com.feanor08.onering.style.OneRingStyle
 
 /**
  * A radial interaction wheel: press, scrub, release-to-commit -- not a set of
- * ordinary buttons layered on a canvas. Nested submenus and seek controls land
- * in later phases (see docs/PLAN.md); this entry point currently supports the
- * main ring's press-scrub-highlight-release flow for leaf [OneRingItem.Action]s.
+ * ordinary buttons layered on a canvas. Committing a leaf [OneRingItem.Action]
+ * fires [onAction]; committing a [OneRingItem.Menu] grows it into the close
+ * control and fades its siblings out, continuing smoothly from wherever its
+ * hover animation currently was (no "selection stutter" -- see docs/PLAN.md
+ * section 10). Rendering the submenu's own children and seek controls land in
+ * later phases.
  *
  * @param items the top-level wedges, in clockwise order starting at
  *   [com.feanor08.onering.style.OneRingDimensions.startAngleDeg].
@@ -57,11 +60,15 @@ public fun OneRing(
         if (canvasSize.width <= 0f || canvasSize.height <= 0f) return@Canvas
 
         val resolved = resolveRing(canvasSize, density, style.dimensions, items.size)
-        controller.update(items, resolved, style.motion, onAction)
+        controller.update(items, resolved, style.motion, style.behavior, onAction)
 
-        val frame = RingFrameBuilder.build(items, resolved, style.colors) { itemId ->
-            state.animations.of(itemId).expansion.value
-        }
+        val frame = RingFrameBuilder.build(
+            items = items,
+            resolved = resolved,
+            colors = style.colors,
+            expansionOf = { itemId -> state.animations.of(itemId).expansion.value },
+            alphaOf = { itemId -> state.animations.of(itemId).contentAlpha.value },
+        )
         drawRing(frame, pathPool)
     }
 }

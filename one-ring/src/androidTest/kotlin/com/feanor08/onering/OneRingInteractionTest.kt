@@ -105,4 +105,45 @@ class OneRingInteractionTest {
 
         composeRule.onRoot().performTouchInput { up() }
     }
+
+    @Test fun committingAMenuItemEntersSubmenuModeAndPressingTheParentWedgeAgainCloses() {
+        val menuItems = listOf(
+            OneRingItem.Menu(
+                id = "menu",
+                label = "Menu",
+                children = listOf(OneRingItem.Action(id = "child", label = "Child")),
+            ),
+            OneRingItem.Action(id = "b", label = "B"),
+            OneRingItem.Action(id = "c", label = "C"),
+        )
+        val sizeDp = 300
+        lateinit var state: OneRingState
+
+        composeRule.setContent {
+            state = rememberOneRingState()
+            OneRing(items = menuItems, onAction = {}, state = state, modifier = Modifier.size(sizeDp.dp))
+        }
+
+        val point = pointInWedge(index = 0, count = menuItems.size, sizeDp = sizeDp)
+
+        composeRule.onRoot().performTouchInput {
+            down(point)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        assert(state.path == listOf("menu")) { "expected path=[menu], was ${state.path}" }
+        assert(state.mode == OneRingMode.Submenu) { "expected Submenu mode, was ${state.mode}" }
+
+        // The parent wedge has grown to the selected radius and is now the
+        // close control; pressing the same point again closes it.
+        composeRule.onRoot().performTouchInput {
+            down(point)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        assert(state.path.isEmpty()) { "expected empty path after closing, was ${state.path}" }
+        assert(state.mode == OneRingMode.Idle) { "expected Idle after closing, was ${state.mode}" }
+    }
 }

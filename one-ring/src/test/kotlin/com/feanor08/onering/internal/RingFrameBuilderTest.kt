@@ -63,4 +63,37 @@ class RingFrameBuilderTest {
         assertEquals(colors.center, frame.centerCircle?.fill)
         assertEquals(resolved.centerRadiusPx, frame.centerCircle?.radiusPx)
     }
+
+    @Test fun `expansion above the hover threshold uses the highlighted color and a larger outer radius`() {
+        val list = items(6)
+        val resolved = resolveRing(Size(600f, 600f), density, OneRingDefaults.dimensions(), list.size)
+        val frame = RingFrameBuilder.build(list, resolved, colors, expansionOf = { id ->
+            if (id ==
+                "item2"
+            ) {
+                2f
+            } else {
+                0f
+            }
+        })
+        val selected = frame.arcs.first { it.itemIndex == 2 }
+        assertEquals(colors.sectorHighlighted, selected.fill)
+        assertEquals(resolved.mainSelectedOuterPx, selected.band.outerPx, 0.01f)
+        val rest = frame.arcs.first { it.itemIndex == 0 }
+        assertEquals(resolved.mainOuterPx, rest.band.outerPx, 0.01f)
+    }
+
+    @Test fun `alphaOf drives per-arc opacity independently of expansion`() {
+        val list = items(6)
+        val resolved = resolveRing(Size(600f, 600f), density, OneRingDefaults.dimensions(), list.size)
+        val frame = RingFrameBuilder.build(
+            list,
+            resolved,
+            colors,
+            expansionOf = { 0f },
+            alphaOf = { id -> if (id == "item1") 0f else 1f },
+        )
+        assertEquals(0f, frame.arcs.first { it.itemIndex == 1 }.alpha, 0f)
+        assertEquals(1f, frame.arcs.first { it.itemIndex == 0 }.alpha, 0f)
+    }
 }
