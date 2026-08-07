@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Radial Wheel Prototype</title>
+<style>
+  :root{
+    --bg:#111;
+    --panel:#1b1b1b;
+    --a:#3a3a3a;
+    --b:#454545;
+    --stroke:#1e1e1e;
+    --accent:#5aa9ff;
+    --accent-bg:#356fa2;
+    --text:#fff;
+    --muted:#9da3ad;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:var(--bg);
+    color:var(--text);
+    font-family:Arial,Helvetica,sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+  }
+  .wrap{width:min(760px,100%);user-select:none}
+  #wheel{display:block;width:100%;max-width:640px;margin:auto;touch-action:none;overflow:visible}
+  .menu-icon{
+    fill:var(--text);
+    font-size:20px;
+    font-weight:500;
+    text-anchor:middle;
+    dominant-baseline:central;
+    pointer-events:none;
+    user-select:none;
+  }
+  .sub-icon{font-size:15px}
+  .labels{margin-top:8px;min-height:48px;text-align:center}
+  .title{font-size:17px;font-weight:600}
+  .subtitle{font-size:14px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <svg id="wheel" viewBox="0 0 500 500" role="img" aria-label="Interactive radial menu"></svg>
+  <div class="labels" aria-live="polite">
+    <div id="title" class="title">Menu</div>
+    <div id="subtitle" class="subtitle">Touch, scrub and release to select</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const svg=document.getElementById('wheel');
+  const title=document.getElementById('title');
+  const subtitle=document.getElementById('subtitle');
+  const NS='http://www.w3.org/2000/svg';
+
+  const G={
+    cx:250,cy:250,
+    mainInner:138,
+    mainOuter:202,
+    mainHover:220,
+    selectedOuter:238,
+    subInner:70,
+    subOuter:128,
+    subHover:140,
+    center:54
+  };
+
+  const items=[
+    {id:'audio',name:'Audio',icon:'◖',children:[
+      {name:'Low',icon:'−'},
+      {name:'Mute',icon:'M'},
+      {name:'High',icon:'+'}
+    ]},
+    {id:'bluetooth',name:'Bluetooth',icon:'ᛒ',children:[
+      {name:'Devices',icon:'◉'},
+      {name:'Connect',icon:'+'},
+      {name:'Disconnect',icon:'−'}
+    ]},
+    {id:'messages',name:'Messages',icon:'◌',children:[
+      {name:'Read',icon:'R'},
+      {name:'Reply',icon:'↩'},
+      {name:'Dismiss',icon:'×'}
+    ]},
+    {id:'music',name:'Music',icon:'♫',children:[
+      {name:'Previous',icon:'◀'},
+      {name:'Play / Pause',icon:'▶'},
+      {name:'Next',icon:'▶|'},
+      {id:'volume',name:'Volume',speaker:true,type:'subSeek',value:67}
+    ]},
+    {id:'volumeMain',name:'Volume',speaker:true,type:'mainSeek',value:48},
+    {id:'settings',name:'Settings',icon:'⚙',children:[
+      {name:'Display',icon:'☼'},
+      {name:'Sound',icon:'♪'},
+      {name:'System',icon:'S'}
+    ]}
+  ];
+
+  const state={
+    mode:'main',
+    parent:null,
+    highlight:null,
+    pointerId:null,
+    touching:false,
+    dragging:false,
+    mainValue:48,
+    subValue:67,
+    hint:false,
+    hintToken:0,
+    snapshot:null
+  };
+
+  const anim={main:items.map(()=>0),sub:[],raf:null};
+
+  function setLabel(a,b=''){
+    title.textContent=a;
+    subtitle.textContent=b;
+  }
+
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+  function norm(a){return ((a%360)+360)%360;}
+
+  function polar(r,a){
+    const q=(a-90)*Math.PI/180;
+    return {x:G.cx+Math.cos(q)*r,y:G.cy+Math.sin(q)*r};
+  }
+
+  function ring(start,sweep,inner,outer){
+    const end=start+sweep;
+    const a=polar(outer,start),b=polar(outer,end);
+    const c=polar(inner,end),d=polar(inner,start);
+    const large=sweep>180?1:0;
+    return `M ${a.x} ${a.y} A ${outer} ${outer} 0 ${large} 1 ${b.x} ${b.y} L ${c.x} ${c.y} A ${inner} ${inner} 0 ${large} 0 ${d.x} ${d.y} Z`;
+  }
+
+  function path(d,fill,stroke='var(--panel)',width=3,opacity=1){
+    const p=document.createElementNS(NS,'path');
+    p.setAttribute('d',d);
+    p.setAttribute('fill',fill);
+    p.setAttribute('stroke',stroke);
+    p.setAttribute('stroke-width',width);
+    p.setAttribute('opacity',opacity);
+    svg.appendChild(p);
+  }
+
+  function circle(x,y,r,fill,stroke='none',width=0){
+    const c=document.createElementNS(NS,'circle');
+    c.setAttribute('cx',x);
+    c.setAttribute('cy',y);
+    c.setAttribute('r',r);
+    c.setAttribute('fill',fill);
+    c.setAttribute('stroke',stroke);
+    c.setAttribute('stroke-width',width);
+    svg.appendChild(c);
+  }
+
+  function textIcon(v,a,r,small=false,opacity=1){
+    const p=polar(r,a);
+    const t=document.createElementNS(NS,'text');
+    t.setAttribute('x',p.x);
+    t.setAttribute('y',p.y);
+    t.setAttribute('class',small?'menu-icon sub-icon':'menu-icon');
+    t.setAttribute('opacity',opacity);
+    t.textContent=v;
+    svg.appendChild(t);
+  }
+
+  function speaker(a,r,small=false,opacity=1){
+    const p=polar(r,a);
+    const g=document.createElementNS(NS,'g');
+    g.setAttribute('transform',`translate(${p.x},${p.y}) scale(${small?0.72:0.92})`);
+    g.setAttribute('opacity',opacity);
+
+    const s=document.createElementNS(NS,'path');
+    s.setAttribute('d','M -12 -5 L -5 -5 L 3 -12 L 3 12 L -5 5 L -12 5 Z M 7 -7 C 11 -3 11 3 7 7 M 12 -12 C 19 -5 19 5 12 12');
+    s.setAttribute('fill','none');
+    s.setAttribute('stroke','var(--text)');
+    s.setAttribute('stroke-width','2.7');
+    s.setAttribute('stroke-linecap','round');
+    s.setAttribute('stroke-linejoin','round');
+    g.appendChild(s);
+    svg.appendChild(g);
+  }
+
+  function icon(item,a,r,small=false,opacity=1){
+    item.speaker?speaker(a,r,small,opacity):textIcon(item.icon,a,r,small,opacity);
+  }
+
+  function center(){circle(G.cx,G.cy,G.center,'var(--panel)');}
+
+  function base(i){
+    return i%2===0?'var(--a)':'var(--b)';
+  }
+
+  function mainGeo(i){
+    const sweep=360/items.length;
+    const start=-sweep/2+i*sweep;
+    return {start,end:start+sweep,sweep,mid:start+sweep/2};
+  }
+
+  function subArc(){
+    const g=mainGeo(state.parent);
+    return {start:g.end,end:g.start+360,sweep:360-g.sweep};
+  }
+
+  function subGeo(i,count){
+    const arc=subArc();
+    const sweep=arc.sweep/count;
+    const start=arc.start+i*sweep;
+    return {start,end:start+sweep,sweep,mid:start+sweep/2};
+  }
+
+  function point(e){
+    const rect=svg.getBoundingClientRect();
+    const x=(e.clientX-rect.left)/rect.width*500;
+    const y=(e.clientY-rect.top)/rect.height*500;
+    const dx=x-G.cx,dy=y-G.cy;
+    return {radius:Math.hypot(dx,dy),angle:norm(Math.atan2(dy,dx)*180/Math.PI+90)};
+  }
+
+  function relative(start,a){return norm(a-norm(start));}
+
+  function mainAt(a){
+    const s=360/items.length;
+    return Math.floor(norm(a+s/2)/s)%items.length;
+  }
+
+  function subAt(a){
+    const children=items[state.parent].children;
+    const arc=subArc();
+    const r=relative(arc.start,a);
+    if(r>=arc.sweep)return null;
+    return Math.min(children.length-1,Math.floor(r/(arc.sweep/children.length)));
+  }
+
+  function cancelHighlight(){
+    if(anim.raf!==null){
+      cancelAnimationFrame(anim.raf);
+      anim.raf=null;
+    }
+  }
+
+  function drawSelectedX(progress=1,startOuter=G.mainOuter){
+    const g=mainGeo(state.parent);
+    const outer=startOuter+(G.selectedOuter-startOuter)*progress;
+
+    path(
+      ring(g.start,g.sweep,G.mainInner,outer),
+      'var(--accent-bg)',
+      'var(--accent)'
+    );
+
+    const rr=G.mainInner+(outer-G.mainInner)*0.53;
+    icon(items[state.parent],g.mid,rr,false,1-progress);
+    textIcon('×',g.mid,rr,false,progress);
+  }
+
+  function renderMain(){
+    svg.innerHTML='';
+
+    items.forEach((item,i)=>{
+      const g=mainGeo(i);
+      const a=anim.main[i]||0;
+      const outer=G.mainOuter+(G.mainHover-G.mainOuter)*a;
+      const active=a>0.03;
+
+      path(
+        ring(g.start,g.sweep,G.mainInner,outer),
+        active?'var(--accent-bg)':base(i),
+        active?'var(--accent)':'var(--panel)'
+      );
+
+      icon(item,g.mid,G.mainInner+(outer-G.mainInner)*0.52,false,1);
+    });
+
+    center();
+
+    const item=state.highlight!==null?items[state.highlight]:null;
+    setLabel(item?item.name:'Menu',item?'Release to select':'Touch, scrub and release to select');
+  }
+
+  function renderSub(){
+    svg.innerHTML='';
+    drawSelectedX(1);
+
+    const parent=items[state.parent];
+    const children=parent.children;
+
+    children.forEach((item,i)=>{
+      const g=subGeo(i,children.length);
+      const a=anim.sub[i]||0;
+      const outer=G.subOuter+(G.subHover-G.subOuter)*a;
+      const active=a>0.03;
+
+      path(
+        ring(g.start,g.sweep,G.subInner,outer),
+        active?'var(--accent-bg)':base(i),
+        active?'var(--accent)':'var(--panel)'
+      );
+
+      icon(item,g.mid,G.subInner+(outer-G.subInner)*0.52,true,1);
+    });
+
+    center();
+
+    const item=state.highlight!==null?children[state.highlight]:null;
+    setLabel(item?item.name:parent.name,item?'Release to select':'Touch and scrub across the submenu');
+  }
+
+  function renderMainSeek(){
+    svg.innerHTML='';
+    drawSelectedX(1);
+
+    const g=mainGeo(state.parent);
+    const start=g.end;
+    const sweep=360-g.sweep;
+
+    path(
+      ring(start,sweep,G.mainInner,G.mainOuter),
+      'var(--a)'
+    );
+
+    const fill=sweep*state.mainValue/100;
+
+    if(fill>0.1){
+      path(
+        ring(start,fill,G.mainInner,G.mainOuter),
+        'var(--accent)',
+        'var(--accent)',
+        1
+      );
+    }
+
+    const p=polar((G.mainInner+G.mainOuter)/2,start+fill);
+    circle(p.x,p.y,7,'var(--text)','var(--accent)',3);
+
+    center();
+    setLabel(
+      `Volume ${Math.round(state.mainValue)}%`,
+      state.hint?'Showing adjustability…':'Drag clockwise · tap X to exit'
+    );
+  }
+
+  function subSeekInfo(){
+    const children=items[state.parent].children;
+    const vi=children.findIndex(x=>x.id==='volume');
+    const vg=subGeo(vi,children.length);
+    const arc=subArc();
+    const segments=[];
+
+    if(arc.end-vg.end>0.001){
+      segments.push({start:vg.end,sweep:arc.end-vg.end});
+    }
+
+    if(vg.start-arc.start>0.001){
+      segments.push({start:arc.start,sweep:vg.start-arc.start});
+    }
+
+    return {vi,vg,segments,total:segments.reduce((s,x)=>s+x.sweep,0)};
+  }
+
+  function renderSubSeek(){
+    svg.innerHTML='';
+    drawSelectedX(1);
+
+    const info=subSeekInfo();
+
+    path(
+      ring(info.vg.start,info.vg.sweep,G.subInner,G.subHover),
+      'var(--accent-bg)',
+      'var(--accent)'
+    );
+
+    speaker(info.vg.mid,G.subInner+(G.subHover-G.subInner)*0.52,true,1);
+
+    info.segments.forEach(seg=>{
+      path(
+        ring(seg.start,seg.sweep,G.subInner,G.subOuter),
+        'var(--a)'
+      );
+    });
+
+    let remaining=info.total*state.subValue/100;
+    let thumb=info.segments.length?info.segments[0].start:null;
+
+    for(const seg of info.segments){
+      if(remaining<=0)break;
+      const used=Math.min(seg.sweep,remaining);
+
+      if(used>0.001){
+        path(
+          ring(seg.start,used,G.subInner,G.subOuter),
+          'var(--accent)',
+          'var(--accent)',
+          1
+        );
+        thumb=seg.start+used;
+      }
+
+      remaining-=used;
+    }
+
+    if(thumb!==null){
+      const p=polar((G.subInner+G.subOuter)/2,thumb);
+      circle(p.x,p.y,6,'var(--text)','var(--accent)',3);
+    }
+
+    center();
+    setLabel(
+      `Volume ${Math.round(state.subValue)}%`,
+      state.hint?'Showing adjustability…':'Drag clockwise · tap X to exit'
+    );
+  }
+
+  function openTransition(){
+    cancelHighlight();
+
+    const item=items[state.parent];
+    const mainVolume=item.type==='mainSeek';
+    const snapshot=state.snapshot||anim.main.slice();
+
+    state.mode='opening';
+    state.touching=false;
+    state.pointerId=null;
+    state.highlight=null;
+
+    const started=performance.now();
+    const duration=280;
+
+    function frame(now){
+      const raw=Math.min(1,(now-started)/duration);
+      const p=1-Math.pow(1-raw,3);
+
+      svg.innerHTML='';
+
+      items.forEach((it,i)=>{
+        if(i===state.parent)return;
+
+        const g=mainGeo(i);
+        const startAnim=snapshot[i]||0;
+        const startOuter=G.mainOuter+(G.mainHover-G.mainOuter)*startAnim;
+
+        if(mainVolume){
+          path(
+            ring(g.start,g.sweep,G.mainInner,startOuter),
+            startAnim>0.03?'var(--accent-bg)':base(i),
+            startAnim>0.03?'var(--accent)':'var(--panel)',
+            3,
+            1-p
+          );
+          icon(it,g.mid,G.mainInner+(startOuter-G.mainInner)*0.52,false,1-p);
+        }else{
+          const outer=G.mainInner+(startOuter-G.mainInner)*(1-p);
+          if(outer>G.mainInner+0.5){
+            path(
+              ring(g.start,g.sweep,G.mainInner,outer),
+              startAnim>0.03?'var(--accent-bg)':base(i),
+              startAnim>0.03?'var(--accent)':'var(--panel)',
+              3,
+              1-p
+            );
+            icon(it,g.mid,G.mainInner+(outer-G.mainInner)*0.52,false,1-p);
+          }
+        }
+      });
+
+      const startAnim=snapshot[state.parent]||0;
+      const startOuter=G.mainOuter+(G.mainHover-G.mainOuter)*startAnim;
+      drawSelectedX(p,startOuter);
+
+      if(mainVolume){
+        const g=mainGeo(state.parent);
+        path(
+          ring(g.end,360-g.sweep,G.mainInner,G.mainOuter),
+          'var(--a)',
+          'var(--panel)',
+          3,
+          p
+        );
+      }else{
+        item.children.forEach((child,i)=>{
+          const g=subGeo(i,item.children.length);
+          const inner=G.subOuter-(G.subOuter-G.subInner)*p;
+
+          if(G.subOuter-inner>0.5){
+            path(
+              ring(g.start,g.sweep,inner,G.subOuter),
+              base(i),
+              'var(--panel)',
+              3,
+              p
+            );
+            icon(child,g.mid,inner+(G.subOuter-inner)*0.52,true,p);
+          }
+        });
+      }
+
+      center();
+      setLabel(item.name,mainVolume?'Opening volume…':'Opening submenu…');
+
+      if(raw<1){
+        requestAnimationFrame(frame);
+        return;
+      }
+
+      state.snapshot=null;
+
+      if(mainVolume){
+        state.mode='mainSeek';
+        const original=item.value??state.mainValue;
+        state.mainValue=0;
+        renderMainSeek();
+        runHint('main',original);
+      }else{
+        state.mode='submenu';
+        anim.sub=Array(item.children.length).fill(0);
+        renderSub();
+      }
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  function closeToMain(){
+    state.hintToken++;
+    state.hint=false;
+    state.dragging=false;
+    state.touching=false;
+    state.pointerId=null;
+
+    const parent=state.parent;
+    state.mode='closing';
+
+    const started=performance.now();
+    const duration=250;
+
+    function frame(now){
+      const raw=Math.min(1,(now-started)/duration);
+      const p=1-Math.pow(1-raw,3);
+      const reverse=1-p;
+
+      svg.innerHTML='';
+
+      items.forEach((item,i)=>{
+        const g=mainGeo(i);
+
+        if(i===parent){
+          const outer=G.mainOuter+(G.selectedOuter-G.mainOuter)*reverse;
+
+          path(
+            ring(g.start,g.sweep,G.mainInner,outer),
+            reverse>0.02?'var(--accent-bg)':base(i),
+            reverse>0.02?'var(--accent)':'var(--panel)'
+          );
+
+          const r=G.mainInner+(outer-G.mainInner)*0.52;
+          icon(item,g.mid,r,false,p);
+          textIcon('×',g.mid,r,false,reverse);
+        }else{
+          const outer=G.mainInner+(G.mainOuter-G.mainInner)*p;
+
+          if(outer>G.mainInner+0.5){
+            path(
+              ring(g.start,g.sweep,G.mainInner,outer),
+              base(i),
+              'var(--panel)',
+              3,
+              p
+            );
+            icon(item,g.mid,G.mainInner+(outer-G.mainInner)*0.52,false,p);
+          }
+        }
+      });
+
+      center();
+      setLabel('Menu','Closing…');
+
+      if(raw<1){
+        requestAnimationFrame(frame);
+        return;
+      }
+
+      state.mode='main';
+      state.parent=null;
+      state.highlight=null;
+      anim.main=items.map(()=>0);
+      anim.sub=[];
+      renderMain();
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  function enterSubSeek(child){
+    cancelHighlight();
+
+    state.mode='subSeekOpening';
+    state.highlight=null;
+    anim.sub.fill(0);
+
+    const info=subSeekInfo();
+    const original=child.value??state.subValue;
+    const started=performance.now();
+    const duration=240;
+
+    function frame(now){
+      const raw=Math.min(1,(now-started)/duration);
+      const p=1-Math.pow(1-raw,3);
+
+      svg.innerHTML='';
+      drawSelectedX(1);
+
+      const children=items[state.parent].children;
+
+      children.forEach((item,i)=>{
+        if(i===info.vi)return;
+
+        const g=subGeo(i,children.length);
+        path(
+          ring(g.start,g.sweep,G.subInner,G.subOuter),
+          base(i),
+          'var(--panel)',
+          3,
+          1-p
+        );
+        icon(item,g.mid,(G.subInner+G.subOuter)/2,true,1-p);
+      });
+
+      path(
+        ring(info.vg.start,info.vg.sweep,G.subInner,G.subHover),
+        'var(--accent-bg)',
+        'var(--accent)'
+      );
+      speaker(info.vg.mid,G.subInner+(G.subHover-G.subInner)*0.52,true,1);
+
+      info.segments.forEach(seg=>{
+        path(
+          ring(seg.start,seg.sweep,G.subInner,G.subOuter),
+          'var(--a)',
+          'var(--panel)',
+          3,
+          p
+        );
+      });
+
+      center();
+      setLabel('Volume','Opening volume…');
+
+      if(raw<1){
+        requestAnimationFrame(frame);
+        return;
+      }
+
+      state.mode='subSeek';
+      state.subValue=0;
+      renderSubSeek();
+      runHint('sub',original);
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  function animateHighlight(){
+    if(anim.raf!==null)return;
+
+    function frame(){
+      let moving=false;
+
+      if(state.mode==='main'){
+        for(let i=0;i<items.length;i++){
+          const target=state.highlight===i?1:0;
+          anim.main[i]+=(target-anim.main[i])*0.28;
+
+          if(Math.abs(target-anim.main[i])<0.01)anim.main[i]=target;
+          else moving=true;
+        }
+        renderMain();
+      }
+
+      if(state.mode==='submenu'){
+        const count=items[state.parent].children.length;
+        if(anim.sub.length!==count)anim.sub=Array(count).fill(0);
+
+        for(let i=0;i<count;i++){
+          const target=state.highlight===i?1:0;
+          anim.sub[i]+=(target-anim.sub[i])*0.28;
+
+          if(Math.abs(target-anim.sub[i])<0.01)anim.sub[i]=target;
+          else moving=true;
+        }
+        renderSub();
+      }
+
+      if(moving)anim.raf=requestAnimationFrame(frame);
+      else anim.raf=null;
+    }
+
+    anim.raf=requestAnimationFrame(frame);
+  }
+
+  function setHighlight(i){
+    if(i===state.highlight)return;
+    state.highlight=i;
+    animateHighlight();
+  }
+
+  function updateHighlight(e){
+    const p=point(e);
+
+    if(state.mode==='main'){
+      setHighlight(
+        p.radius>=G.mainInner-18&&p.radius<=G.mainHover+24
+          ?mainAt(p.angle)
+          :null
+      );
+    }else if(state.mode==='submenu'){
+      setHighlight(
+        p.radius>=G.subInner-16&&p.radius<=G.subHover+18
+          ?subAt(p.angle)
+          :null
+      );
+    }
+  }
+
+  function onX(e){
+    if(state.parent===null)return false;
+    if(!['submenu','mainSeek','subSeek'].includes(state.mode))return false;
+
+    const p=point(e);
+    const g=mainGeo(state.parent);
+    const r=relative(g.start,p.angle);
+
+    return r<=g.sweep&&
+      p.radius>=G.mainInner&&
+      p.radius<=G.selectedOuter+12;
+  }
+
+  function commit(){
+    if(state.highlight===null)return;
+
+    if(state.mode==='main'){
+      state.snapshot=anim.main.slice();
+      state.parent=state.highlight;
+      state.highlight=null;
+      cancelHighlight();
+      openTransition();
+      return;
+    }
+
+    if(state.mode==='submenu'){
+      const child=items[state.parent].children[state.highlight];
+
+      if(child.type==='subSeek'){
+        enterSubSeek(child);
+        return;
+      }
+
+      state.highlight=null;
+      anim.sub.fill(0);
+      renderSub();
+    }
+  }
+
+  function tween(from,to,duration,token,setter,renderer){
+    return new Promise(resolve=>{
+      const started=performance.now();
+
+      function frame(now){
+        if(token!==state.hintToken){
+          resolve();
+          return;
+        }
+
+        const raw=Math.min(1,(now-started)/duration);
+        const p=1-Math.pow(1-raw,3);
+        setter(from+(to-from)*p);
+        renderer();
+
+        if(raw<1)requestAnimationFrame(frame);
+        else resolve();
+      }
+
+      requestAnimationFrame(frame);
+    });
+  }
+
+  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
+  async function runHint(kind,original){
+    const token=++state.hintToken;
+    state.hint=true;
+
+    const plus=clamp(original+5,0,100);
+    const setter=kind==='main'?v=>state.mainValue=v:v=>state.subValue=v;
+    const renderer=kind==='main'?renderMainSeek:renderSubSeek;
+
+    setter(0);
+    renderer();
+
+    await tween(0,plus,480,token,setter,renderer);
+    if(token!==state.hintToken)return;
+
+    await sleep(90);
+    if(token!==state.hintToken)return;
+
+    await tween(plus,original,190,token,setter,renderer);
+    if(token!==state.hintToken)return;
+
+    setter(original);
+    state.hint=false;
+    renderer();
+  }
+
+  function updateMainSeek(e){
+    if(state.hint)return;
+
+    const p=point(e);
+    if(p.radius<G.mainInner-20||p.radius>G.mainOuter+24)return;
+
+    const g=mainGeo(state.parent);
+    const start=g.end;
+    const sweep=360-g.sweep;
+    const r=relative(start,p.angle);
+
+    let f;
+
+    if(r<=sweep){
+      f=r/sweep;
+    }else{
+      const a=360-r,b=r-sweep;
+      f=a<b?0:1;
+    }
+
+    state.mainValue=clamp(f*100,0,100);
+    renderMainSeek();
+  }
+
+  function updateSubSeek(e){
+    if(state.hint)return;
+
+    const p=point(e);
+    if(p.radius<G.subInner-20||p.radius>G.subHover+24)return;
+
+    const info=subSeekInfo();
+    let cumulative=0;
+    let distance=null;
+
+    for(const seg of info.segments){
+      const r=relative(seg.start,p.angle);
+
+      if(r<=seg.sweep){
+        distance=cumulative+r;
+        break;
+      }
+
+      cumulative+=seg.sweep;
+    }
+
+    if(distance===null)return;
+
+    state.subValue=clamp(distance/info.total*100,0,100);
+    renderSubSeek();
+  }
+
+  svg.addEventListener('pointerdown',e=>{
+    if(['opening','closing','subSeekOpening'].includes(state.mode))return;
+
+    state.pointerId=e.pointerId;
+    state.touching=true;
+
+    try{svg.setPointerCapture(e.pointerId);}catch(_){}
+
+    if(onX(e)){
+      closeToMain();
+      return;
+    }
+
+    if(state.mode==='mainSeek'){
+      if(state.hint)return;
+      state.dragging=true;
+      updateMainSeek(e);
+      return;
+    }
+
+    if(state.mode==='subSeek'){
+      if(state.hint)return;
+      state.dragging=true;
+      updateSubSeek(e);
+      return;
+    }
+
+    updateHighlight(e);
+  });
+
+  svg.addEventListener('pointermove',e=>{
+    if(e.pointerId!==state.pointerId)return;
+
+    if(state.mode==='mainSeek'&&state.dragging){
+      updateMainSeek(e);
+      return;
+    }
+
+    if(state.mode==='subSeek'&&state.dragging){
+      updateSubSeek(e);
+      return;
+    }
+
+    if(state.touching&&(state.mode==='main'||state.mode==='submenu')){
+      updateHighlight(e);
+    }
+  });
+
+  svg.addEventListener('pointerup',e=>{
+    if(e.pointerId!==state.pointerId)return;
+
+    if(state.mode==='mainSeek'||state.mode==='subSeek'){
+      state.dragging=false;
+      state.touching=false;
+      state.pointerId=null;
+      return;
+    }
+
+    if(!state.touching){
+      state.pointerId=null;
+      return;
+    }
+
+    updateHighlight(e);
+    state.touching=false;
+    state.pointerId=null;
+    commit();
+  });
+
+  svg.addEventListener('pointercancel',()=>{
+    state.pointerId=null;
+    state.touching=false;
+    state.dragging=false;
+    setHighlight(null);
+  });
+
+  renderMain();
+})();
+</script>
+</body>
+</html>

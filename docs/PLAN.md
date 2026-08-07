@@ -1,0 +1,133 @@
+# one-ring — Implementation Blueprint
+
+Native Android (Kotlin + Jetpack Compose) radial interaction library, generalised
+from the interaction prototype at [`docs/prototype/radial-wheel-final-prototype.html`](prototype/radial-wheel-final-prototype.html).
+
+Confirmed project decisions:
+
+| Decision | Value |
+|---|---|
+| Group / package namespace | `com.feanor08.onering` |
+| Library artifact id | `one-ring` |
+| minSdk | 24 |
+| targetSdk / compileSdk | 36 |
+| Java / Kotlin target | 17 |
+| Licence | Apache-2.0, public OSS |
+| Modules | `:one-ring` (library), `:sample` (demo app) |
+
+See [`docs/geometry.md`](geometry.md) for the angle/geometry conventions and
+[`docs/interaction-spec.md`](interaction-spec.md) for the behavioural spec extracted
+from the prototype. This file is the phase-by-phase engineering plan; the full
+rationale (architecture, API design, testing strategy, risks, open questions) was
+worked out in design discussion before implementation began and is summarised below.
+
+## Architecture
+
+Three layers, one-directional dependency:
+
+```
+L3  Public Compose surface     OneRing(), rememberOneRingState(), OneRingItem, OneRingStyle
+L2  Internal Compose runtime   RingAnimations (Animatable) · RingInteraction (pointer) ·
+                                RingFrameBuilder (pure) · RingRenderer (dumb draw)
+L1  Geometry engine            pure Kotlin, zero Compose/Android imports
+```
+
+Key decisions:
+
+- **Two-layer composition.** Arcs are painted via `drawBehind`; per-item icon/label
+  content is composed as real children of a custom `Layout` positioned at polar
+  coordinates. This is what makes `@Composable` content slots *and* TalkBack
+  semantics possible at once.
+- **`Animatable` registry with item-id-keyed lifetime that outlives every mode
+  change**, owned by `OneRingState`. This is what makes the prototype's "selection
+  stutter" bug structurally impossible: `Animatable.animateTo()` always continues
+  from the current value and velocity, so a commit mid-hover-animation never snaps.
+- **Seek tracks built by angular complement in relative-from-origin space.**
+  Wraparound is eliminated algebraically; excluded gaps (the parent close-wedge, the
+  seek item's own wedge) cannot become progress because they are subtracted out
+  during construction, not filtered at draw/hit-test time.
+- **Two Gradle modules only** (`:one-ring`, `:sample`). No `-core`/`-compose` split
+  in v1 — the boundary is enforced by an architecture unit test instead.
+
+## Phases in this pass
+
+This implementation pass covers **Phases 0–5**. Phases 6–10 (seek controls, public
+API hardening, accessibility/haptics, sample/docs, publishing) are designed in the
+sections below but not yet built.
+
+### Phase 0 — Bootstrap
+Git init; rename `app/` → `one-ring/` (`com.android.library`, namespace
+`com.feanor08.onering`, minSdk 24, Java 17, `explicitApi()`); create `sample/`
+(`com.android.application`); wire `settings.gradle.kts` / version catalog / Compose
+BOM; add LICENSE, README skeleton, CI workflow.
+
+### Phase 1 — Geometry engine
+`geometry/` package: `Angles`, `AngularSpan`, `RadialBand`, `RingLayout`,
+`SubmenuLayout`, `SeekTrack`, `HitTest`. Pure Kotlin, fully unit tested
+(angle normalisation, wedge allocation for arbitrary counts, submenu complement-arc
+allocation, multi-segment seek mapping with continuity/round-trip properties, hit
+testing including wraparound). ~70% of this phase's code is tests, deliberately.
+
+### Phase 2 — Model, style, static rendering
+`OneRingItem` (Action/Menu/Seek), `OneRingIcon`, `OneRingStyle` and its
+`Colors`/`Dimensions`/`Motion`/`Behavior` components, `OneRingDefaults` (fractions
+sourced directly from the prototype's 500×500 constants). `ResolvedRing` (px
+resolution of the style against a real canvas size). `RingFrame` (immutable visual
+snapshot) + `RingFrameBuilder` (pure function, idle state only this phase) +
+`RingRenderer` (dumb `DrawScope` draw pass) + `RingPathPool` (allocation-free path
+reuse). First `OneRing()` composable — static, non-interactive.
+
+### Phase 3 — Pointer scrub + animation foundation
+`ItemAnimation` (three `Animatable<Float>`s: expansion, contentAlpha, closeMorph)
+and `RingAnimations` registry, owned by `OneRingState` so lifetime spans every mode
+change. `RingInteractionController` driven by a low-level `awaitEachGesture` loop
+(not `detectDragGestures`, which applies touch slop the interaction can't afford).
+Highlight-follows-scrub, release-off-ring cancels, `onAction` fires for leaf items.
+
+### Phase 4 — Selection transition
+Commit → the selected wedge's `expansion` **continues from its current animated
+value** toward the "selected" target — the fix for the prototype's stutter bug,
+achieved structurally rather than by a manual snapshot. Icon → × morph. Siblings
+fade/collapse. The parent wedge becomes the close control (hit-tested on **down**,
+not release, for an instant-feeling back action). Frame-delta continuity is
+unit-testable because `RingFrameBuilder` is pure.
+
+### Phase 5 — Submenu
+`OneRingState.path` navigation; `SubmenuLayout` allocates the child arcs across the
+360° − parent-sweep complement; submenu reveal animates the **inner** radius inward
+while the outer edge stays pinned (matching the prototype exactly); close reverses
+through the same `Animatable`s.
+
+### Phases 6–10 (designed, not built this pass)
+6 Seek controls (main-ring + submenu variants, multi-segment track, intro hint with
+`displayValue` separated from the real value) · 7 Public API hardening
+(`binary-compatibility-validator`, config classes as factories not data classes)
+· 8 Accessibility (per-item semantics nodes, TalkBack-operable without any pointer
+gesture) & haptics · 9 Sample app + docs + Dokka · 10 Publishing prep
+(`publishToMavenLocal` smoke test, Maven Central metadata).
+
+## Testing strategy (applies from Phase 1 onward)
+
+- **Layer 1 (JVM, `src/test/`):** exhaustive geometry tests — angle normalisation
+  including wraparound and exact 360°, ring/submenu layout for arbitrary item
+  counts, seek-track continuity and round-trip properties, hit testing at every
+  0.1° for n = 1..16. An architecture test greps `geometry/*.kt` for
+  `import androidx.compose` and fails the build if found.
+- **Layer 2 (JVM):** `RingFrameBuilder` output tested as pure data — no Compose
+  runtime needed to assert which arcs exist, at what radius, with what alpha.
+- **Layer 3 (`androidTest/`):** Compose UI tests for the full press→scrub→release
+  flow, submenu open/close, and (once built) seek adjustment and TalkBack semantic
+  actions.
+- **Stutter regression, specifically:** a pure-state test drives an `Animatable`
+  mid-flight, interrupts it, and asserts the next frame's value is close to — not
+  equal to — the interrupted value (frame-delta bound, not exact-match, since a
+  spring is still moving). A Compose-level test repeats this through real pointer
+  input. A static rule (documented, enforced by review + a detekt ban in later
+  phases) forbids `animateFloatAsState`/`updateTransition`/`snapTo` inside the
+  animation-owning package, since those are the exact APIs that reintroduce the bug.
+
+## Open items deferred past this pass
+
+Seek controls, accessibility, haptics, publishing metadata, and the public-API
+freeze (`binary-compatibility-validator`) are designed in full in the original
+planning discussion but land in Phases 6–10, out of scope for this pass.
