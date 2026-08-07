@@ -51,9 +51,11 @@ Key decisions:
 
 ## Phases in this pass
 
-This implementation pass covers **Phases 0–5**. Phases 6–10 (seek controls, public
-API hardening, accessibility/haptics, sample/docs, publishing) are designed in the
-sections below but not yet built.
+Built so far: **Phases 0–5, 7, 8**. **Phase 6 (seek controls) is the one gap** —
+Phases 7–8 were built ahead of it, so `OneRingItem.Seek` exists in the data model
+and the DSL, but committing one is currently a no-op (see Phase 3/4's commit
+branches). Phase 9 (full sample polish, Dokka) and Phase 10 (publishing prep) are
+designed below but not yet built.
 
 ### Phase 0 — Bootstrap
 Git init; rename `app/` → `one-ring/` (`com.android.library`, namespace
@@ -98,13 +100,37 @@ unit-testable because `RingFrameBuilder` is pure.
 while the outer edge stays pinned (matching the prototype exactly); close reverses
 through the same `Animatable`s.
 
-### Phases 6–10 (designed, not built this pass)
-6 Seek controls (main-ring + submenu variants, multi-segment track, intro hint with
-`displayValue` separated from the real value) · 7 Public API hardening
-(`binary-compatibility-validator`, config classes as factories not data classes)
-· 8 Accessibility (per-item semantics nodes, TalkBack-operable without any pointer
-gesture) & haptics · 9 Sample app + docs + Dokka · 10 Publishing prep
-(`publishToMavenLocal` smoke test, Maven Central metadata).
+### Phase 7 — Public API hardening
+`oneRingItems { }` DSL (action/menu/seek builders, duplicate-sibling-id validation
+at construction time). `OneRingEvent` (HighlightChanged/ActionCommitted/
+MenuOpened/MenuClosed) via an optional `onEvent` callback. `OneRingCenterScope` +
+`OneRing(center = ...)` slot, which is why `OneRing()` now wraps its `Canvas` in a
+`BoxWithConstraints` (also needed for Phase 8's semantics overlay). Three style
+presets (`compactStyle`/`automotiveStyle`/`gameStyle`) on `OneRingDefaults`.
+`binary-compatibility-validator` was evaluated and **not applied** — it registers
+no `apiDump`/`apiCheck` tasks against an AGP-9-built-in-Kotlin module (needs the
+`org.jetbrains.kotlin.android` target, which AGP 9 forbids applying alongside its
+own Kotlin support); documented in `build.gradle.kts`. ABI hygiene stays manual:
+`@ConsistentCopyVisibility` + internal constructors + `OneRingDefaults` factories.
+
+### Phase 8 — Accessibility & haptics
+Real (invisible) per-item semantics nodes (`RingSemantics.kt`), a fixed-size
+target centered on each wedge's midpoint with description/role/state/
+`traversalIndex`/`onClick` — a second, complete input path, since explore-by-touch
+consumes pointer events and there's still no icon/content layer to shape nodes to
+the wedge itself. `RingInteractionController.commitDirectly()`/`closeDirectly()`
+let a semantic click run the exact same commit/close logic a pointer release
+would. `OneRingHaptics` (fun interface) + `rememberDefaultOneRingHaptics()`
+(`View.performHapticFeedback`, API-level gated), wired into highlight-change/
+commit/reject/open/close and naturally deduped by `setHighlight`'s existing
+no-change early return. Reduced motion via
+`Settings.Global.ANIMATOR_DURATION_SCALE` → `effectiveMotion()` swapping every
+spec for `snap()`. A one-time-per-item-count Logcat warning when a wedge's arc
+length falls under 48dp.
+
+### Phases 9–10 (designed, not built)
+9 Full sample polish (preset gallery, screenshots) + docs + Dokka · 10 Publishing
+prep (`publishToMavenLocal` smoke test, Maven Central metadata, signing).
 
 ## Testing strategy (applies from Phase 1 onward)
 
@@ -128,6 +154,8 @@ gesture) & haptics · 9 Sample app + docs + Dokka · 10 Publishing prep
 
 ## Open items deferred past this pass
 
-Seek controls, accessibility, haptics, publishing metadata, and the public-API
-freeze (`binary-compatibility-validator`) are designed in full in the original
-planning discussion but land in Phases 6–10, out of scope for this pass.
+**Seek controls (Phase 6)** are the one designed-but-unbuilt gap in the
+implemented range — `OneRingItem.Seek` exists but committing one is a no-op.
+Publishing metadata (Phase 10) and the automated binary-compatibility freeze are
+also still open; the latter is blocked on tooling (see Phase 7 above), not on
+unfinished work here.
