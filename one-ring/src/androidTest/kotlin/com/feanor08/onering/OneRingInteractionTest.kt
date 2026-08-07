@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.feanor08.onering.geometry.AngularSpan
@@ -210,5 +212,78 @@ class OneRingInteractionTest {
         assert(lastAction == "child0") { "expected commit on child0, got $lastAction" }
         assert(state.path.isEmpty()) { "expected the submenu to close after a child commit, was ${state.path}" }
         assert(state.mode == OneRingMode.Idle) { "expected Idle after child commit, was ${state.mode}" }
+    }
+
+    @Test fun talkBackSemanticClickCommitsAnActionWithoutAnyPointerGesture() {
+        var lastAction: String? = null
+        val sizeDp = 300
+
+        composeRule.setContent {
+            OneRing(
+                items = items,
+                onAction = { lastAction = it.id },
+                modifier = Modifier.size(sizeDp.dp),
+            )
+        }
+
+        // No touch input at all -- proves the semantics layer is a complete,
+        // independent input path, not decoration on top of the pointer flow.
+        composeRule.onNodeWithContentDescription("B").performClick()
+        composeRule.waitForIdle()
+
+        assert(lastAction == "b") { "expected the semantic click on B to commit item b, got $lastAction" }
+    }
+
+    @Test fun talkBackCanOpenAndCloseAMenuWithoutAnyPointerGesture() {
+        val menuItems = listOf(
+            OneRingItem.Menu(
+                id = "menu",
+                label = "Menu",
+                children = listOf(OneRingItem.Action(id = "child", label = "Child")),
+            ),
+            OneRingItem.Action(id = "b", label = "B"),
+        )
+        lateinit var state: OneRingState
+
+        composeRule.setContent {
+            state = rememberOneRingState()
+            OneRing(items = menuItems, onAction = {}, state = state, modifier = Modifier.size(300.dp))
+        }
+
+        composeRule.onNodeWithContentDescription("Menu").performClick()
+        composeRule.waitForIdle()
+        assert(state.path == listOf("menu")) { "expected the semantic click to open the menu, path=${state.path}" }
+
+        composeRule.onNodeWithContentDescription("Close Menu").performClick()
+        composeRule.waitForIdle()
+        assert(state.path.isEmpty()) { "expected the semantic click on the close node to close it, path=${state.path}" }
+    }
+
+    @Test fun hapticsFireOnHighlightChangeAndOnCommitButNotContinuouslyWithinTheSameWedge() {
+        val events = mutableListOf<OneRingHapticEvent>()
+        val sizeDp = 300
+
+        composeRule.setContent {
+            OneRing(
+                items = items,
+                onAction = {},
+                modifier = Modifier.size(sizeDp.dp),
+                haptics = OneRingHaptics { events += it },
+            )
+        }
+
+        val point = pointInWedge(index = 0, count = items.size, sizeDp = sizeDp)
+        composeRule.onRoot().performTouchInput {
+            down(point)
+            moveTo(point) // still inside the same wedge -- must not re-fire
+            moveTo(point)
+            up()
+        }
+        composeRule.waitForIdle()
+
+        assert(events.count { it == OneRingHapticEvent.HighlightChanged } == 1) {
+            "expected exactly one HighlightChanged event for staying in one wedge, got $events"
+        }
+        assert(events.contains(OneRingHapticEvent.Committed)) { "expected a Committed event, got $events" }
     }
 }

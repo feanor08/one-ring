@@ -6,6 +6,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
+import com.feanor08.onering.OneRingEvent
+import com.feanor08.onering.OneRingHapticEvent
+import com.feanor08.onering.OneRingHaptics
 import com.feanor08.onering.OneRingItem
 import com.feanor08.onering.OneRingState
 import com.feanor08.onering.geometry.AngularSpan
@@ -27,6 +30,10 @@ import kotlin.math.hypot
  * restarted; [update] refreshes its view of the current items/geometry/style/
  * callback each frame instead.
  *
+ * [commitDirectly] and [closeDirectly] give the accessibility semantics layer
+ * (Phase 8) a way to trigger exactly the same commit/close logic a pointer
+ * gesture would, without needing to fake pointer events.
+ *
  * Only one level of nesting is interactive so far (a committed submenu leaf
  * fires [onAction] and closes back to the top level); deeper nesting is a
  * later phase.
@@ -37,7 +44,9 @@ internal class RingInteractionController(private val state: OneRingState) {
     private var dimensions: OneRingDimensions? = null
     private var motion: OneRingMotion? = null
     private var behavior: OneRingBehavior? = null
+    private var haptics: OneRingHaptics = OneRingHaptics.None
     private var onAction: (OneRingItem.Action) -> Unit = {}
+    private var onEvent: ((OneRingEvent) -> Unit)? = null
 
     fun update(
         items: List<OneRingItem>,
@@ -45,20 +54,30 @@ internal class RingInteractionController(private val state: OneRingState) {
         dimensions: OneRingDimensions,
         motion: OneRingMotion,
         behavior: OneRingBehavior,
+        haptics: OneRingHaptics,
         onAction: (OneRingItem.Action) -> Unit,
+        onEvent: ((OneRingEvent) -> Unit)?,
     ) {
         this.items = items
         this.resolved = resolved
         this.dimensions = dimensions
         this.motion = motion
         this.behavior = behavior
+        this.haptics = haptics
         this.onAction = onAction
+        this.onEvent = onEvent
+    }
+
+    private fun haptic(event: OneRingHapticEvent) {
+        if (behavior?.hapticsEnabled == true) haptics.perform(event)
     }
 
     private fun setHighlight(id: String?) {
         if (state.highlightedId == id) return
         val previous = state.highlightedId
         state.highlightedId = id
+        onEvent?.invoke(OneRingEvent.HighlightChanged(id))
+        haptic(OneRingHapticEvent.HighlightChanged)
         val hoverSpec = motion?.hover ?: return
 
         previous?.let { previousId ->
@@ -114,6 +133,18 @@ internal class RingInteractionController(private val state: OneRingState) {
         return true
     }
 
+    /** Directly closes the currently open submenu, as if its parent's close wedge were pressed. */
+    fun closeDirectly() {
+        val parentId = state.path.lastOrNull() ?: return
+        beginClose(parentId)
+    }
+
+    /** Directly commits [id] as if it had been highlighted and released -- for the semantics layer. */
+    fun commitDirectly(id: String) {
+        setHighlight(id)
+        commit()
+    }
+
     private fun commit() {
         val id = state.highlightedId ?: return
         setHighlight(null)
@@ -126,8 +157,8 @@ internal class RingInteractionController(private val state: OneRingState) {
 
     private fun commitMainItem(id: String) {
         when (val item = items.firstOrNull { it.id == id }) {
-            is OneRingItem.Action -> if (item.enabled) onAction(item)
-            is OneRingItem.Menu -> if (item.enabled) beginOpen(item)
+            is OneRingItem.Action -> commitAction(item)
+            is OneRingItem.Menu -> if (item.enabled) beginOpen(item) else haptic(OneRingHapticEvent.Rejected)
             else -> Unit // Seek commit (entering seek mode) arrives in Phase 6.
         }
     }
@@ -135,13 +166,23 @@ internal class RingInteractionController(private val state: OneRingState) {
     private fun commitSubmenuChild(id: String) {
         val (parent, children) = currentSubmenu(items, state.path) ?: return
         when (val item = children.firstOrNull { it.id == id }) {
-            is OneRingItem.Action -> if (item.enabled) {
-                onAction(item)
-                beginClose(parent.id)
+            is OneRingItem.Action -> {
+                commitAction(item)
+                if (item.enabled) beginClose(parent.id)
             }
             // Nested Menu/Seek within a submenu isn't interactive yet.
             else -> Unit
         }
+    }
+
+    private fun commitAction(item: OneRingItem.Action) {
+        if (!item.enabled) {
+            haptic(OneRingHapticEvent.Rejected)
+            return
+        }
+        onAction(item)
+        onEvent?.invoke(OneRingEvent.ActionCommitted(item.id))
+        haptic(OneRingHapticEvent.Committed)
     }
 
     private fun beginOpen(item: OneRingItem.Menu) {
@@ -163,6 +204,8 @@ internal class RingInteractionController(private val state: OneRingState) {
             state.animations.of(item.id).expansion.animateTo(2f, m.select)
             state.path = state.path + item.id
             state.phase = OneRingState.Phase.Settled
+            onEvent?.invoke(OneRingEvent.MenuOpened(item.id))
+            haptic(OneRingHapticEvent.MenuOpened)
         }
     }
 
@@ -180,6 +223,8 @@ internal class RingInteractionController(private val state: OneRingState) {
             state.animations.of(parentId).expansion.animateTo(0f, m.close)
             state.path = state.path.dropLast(1)
             state.phase = OneRingState.Phase.Settled
+            onEvent?.invoke(OneRingEvent.MenuClosed(parentId))
+            haptic(OneRingHapticEvent.MenuClosed)
         }
     }
 

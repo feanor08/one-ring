@@ -113,9 +113,52 @@ public object OneRingDefaults {
         siblingExit = siblingExit,
     )
 
-    public fun behavior(closeOnParentPress: Boolean = true, cancelOnExitBand: Boolean = true): OneRingBehavior =
-        OneRingBehavior(
-            closeOnParentPress = closeOnParentPress,
-            cancelOnExitBand = cancelOnExitBand,
-        )
+    public fun behavior(
+        closeOnParentPress: Boolean = true,
+        cancelOnExitBand: Boolean = true,
+        hapticsEnabled: Boolean = true,
+    ): OneRingBehavior = OneRingBehavior(
+        closeOnParentPress = closeOnParentPress,
+        cancelOnExitBand = cancelOnExitBand,
+        hapticsEnabled = hapticsEnabled,
+    )
+
+    /** A denser layout for smaller displays: tighter radii, thinner touch slop. */
+    public fun compactStyle(): OneRingStyle = style(
+        dimensions = dimensions(
+            mainInner = RadialSize.Fraction(0.60f),
+            mainOuter = RadialSize.Fraction(0.85f),
+            mainHoverOuter = RadialSize.Fraction(0.90f),
+            mainSelectedOuter = RadialSize.Fraction(0.97f),
+            submenuInner = RadialSize.Fraction(0.35f),
+            submenuOuter = RadialSize.Fraction(0.58f),
+            submenuHoverOuter = RadialSize.Fraction(0.62f),
+            centerRadius = RadialSize.Fraction(0.28f),
+            touchSlopRadial = 10.dp,
+        ),
+    )
+
+    /** Larger touch targets, higher-contrast highlight, and a bolder stroke for in-vehicle displays. */
+    public fun automotiveStyle(): OneRingStyle = style(
+        colors = colors(
+            sectorHighlighted = Color(0xFF3D8BFF),
+            strokeHighlighted = Color(0xFF7FB8FF),
+        ),
+        dimensions = dimensions(
+            touchSlopRadial = 28.dp,
+            sectorStrokeWidth = 3.dp,
+        ),
+        behavior = behavior(hapticsEnabled = true),
+    )
+
+    /** Snappier, bouncier motion for a game radial menu / weapon wheel; no seek-hint-style hesitation. */
+    public fun gameStyle(): OneRingStyle = style(
+        motion = motion(
+            hover = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessHigh),
+            select = tween(160, easing = EaseOutCubic),
+            close = tween(140, easing = EaseOutCubic),
+            submenuReveal = tween(160, easing = EaseOutCubic),
+            siblingExit = tween(100, easing = EaseOutCubic),
+        ),
+    )
 }
