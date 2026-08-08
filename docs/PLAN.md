@@ -51,8 +51,10 @@ Key decisions:
 
 ## Phases in this pass
 
-Built so far: **Phases 0–8** (all of them). Phase 9 (full sample polish, Dokka)
-and Phase 10 (publishing prep) are designed below but not yet built.
+Built so far: **all ten phases.** The library is feature-complete against this
+blueprint; what's left is entirely outside it (a verified namespace and GPG
+signing for Maven Central, deeper nesting, semantic seek adjustment -- see
+"Open items" below).
 
 ### Phase 0 — Bootstrap
 Git init; rename `app/` → `one-ring/` (`com.android.library`, namespace
@@ -141,9 +143,33 @@ length falls under 48dp. TalkBack can enter and exit a seek control (Phase 6),
 but adjusting its value still needs a real drag gesture — a documented scope
 cut, not a silent gap.
 
-### Phases 9–10 (designed, not built)
-9 Full sample polish (preset gallery, screenshots) + docs + Dokka · 10 Publishing
-prep (`publishToMavenLocal` smoke test, Maven Central metadata, signing).
+### Phase 9 — Sample polish, docs, Dokka
+`SampleItems.kt` rebuilt with the `oneRingItems { }` DSL; a four-way preset
+chip row (Default/Compact/Automotive/Game) switching `OneRing`'s `style` live
+-- the "preset gallery," kept to one ring with a switcher rather than four
+side by side, per the plan's "not an enormous playground" constraint. Dokka
+hit the same AGP-9-built-in-Kotlin gap as `binary-compatibility-validator`
+(its Android-extension auto-detection silently produces zero source sets);
+unlike BCV there's a working fix -- Dokka Gradle Plugin V2 plus an explicit
+`dokkaSourceSets.create("main") { sourceRoots.from(...) }` (`create`, not
+`configureEach`, which only touches entries a container already has).
+Verified it actually documents all three public packages (236 HTML files,
+zero for `internal/`), not another silent no-op; wired into CI. README
+expanded into real usage docs (install, quick start, nested menus, both seek
+variants, customization/presets, state hoisting, accessibility, haptics).
+
+### Phase 10 — Publishing prep
+`com.vanniktech.maven.publish` applied cleanly (no AGP-9 friction this time).
+Coordinates `com.feanor08.onering:one-ring` (placeholder group), full POM
+metadata, sources jar, `VERSION_NAME=0.1.0-SNAPSHOT` centralized in
+`gradle.properties`. Deliberately not called: `publishToMavenCentral()` /
+`signAllPublications()` -- no verified namespace or GPG key yet. **Verified
+end-to-end, not just configured:** `./gradlew :one-ring:publishToMavenLocal`
+produces a real AAR + sources jar + POM + Gradle module metadata under
+`~/.m2/repository/com/feanor08/onering/one-ring/`, and a standalone scratch
+Gradle project -- resolving the artifact purely from `mavenLocal()`, not a
+`project()` dependency -- compiled real consumer code (the DSL, `OneRing()`,
+a style preset) and assembled a working debug APK against it.
 
 ## Testing strategy (applies from Phase 1 onward)
 
@@ -165,10 +191,20 @@ prep (`publishToMavenLocal` smoke test, Maven Central metadata, signing).
   phases) forbids `animateFloatAsState`/`updateTransition`/`snapTo` inside the
   animation-owning package, since those are the exact APIs that reintroduce the bug.
 
-## Open items deferred past this pass
+## Open items -- genuinely outside this blueprint's scope
 
-Full sample polish and Dokka (Phase 9) and publishing metadata (Phase 10) are
-still open. The automated binary-compatibility freeze is also open, but blocked
-on tooling (see Phase 7 above), not on unfinished work here. Semantic drag-to-
-adjust for an active seek control (as opposed to entering/exiting one, which
-works) is a known, documented scope cut within Phase 8.
+All ten phases are built. What remains is deliberately out of scope for a
+pre-1.0, unpublished library, not unfinished work within it:
+
+- **Maven Central publishing** -- a verified `io.github.<user>` or company
+  namespace and GPG signing. `publishToMavenLocal` is verified working end to
+  end (see Phase 10); Central is a credentials/account matter, not a code gap.
+- **The automated binary-compatibility freeze** -- blocked on tooling (BCV
+  doesn't yet support AGP 9's built-in Kotlin compilation; see Phase 7), not
+  on unfinished work here.
+- **Semantic drag-to-adjust for an active seek control** -- TalkBack can enter
+  and exit one, but adjusting its value still needs a real touch drag. A
+  documented scope cut within Phase 8, not a silent gap.
+- **Nesting deeper than one level** -- a `Menu` or `Seek` inside a submenu
+  isn't interactive. The data model supports arbitrary depth; the interaction
+  controller and renderer don't yet walk more than one level of `path`.

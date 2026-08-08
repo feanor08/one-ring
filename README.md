@@ -5,13 +5,14 @@ press, scrub, release-to-commit. Not a volume-control widget: a domain-neutral
 building block for automotive controls, quick-action wheels, media controls,
 tool palettes, and nested radial menus.
 
-Status: **early development, all core phases built.** Phases 0–8 of the
-[implementation blueprint](docs/PLAN.md) are in place: geometry engine, the
-stutter-safe animation model, nested submenus, main-ring and submenu seek
-controls, the `oneRingItems { }` DSL, events, style presets, TalkBack
-semantics, and haptics. Not yet published anywhere — see
-[Installing](#installing) and [`docs/PLAN.md`](docs/PLAN.md) for what's left
-(Phase 9 polish, Phase 10 publishing).
+Status: **pre-1.0, all ten phases of the [implementation blueprint](docs/PLAN.md)
+built.** Geometry engine, the stutter-safe animation model, nested submenus,
+main-ring and submenu seek controls, the `oneRingItems { }` DSL, events, style
+presets, TalkBack semantics, haptics, API docs, and a verified
+`publishToMavenLocal`. Not yet published to any remote repository — see
+[Installing](#installing) and [`docs/PLAN.md`](docs/PLAN.md)'s "Open items"
+for what's genuinely left (Maven Central credentials, deeper nesting, semantic
+seek adjustment).
 
 ## Modules
 
@@ -175,10 +176,21 @@ feedback elsewhere (e.g. an automotive HMI's vehicle-side haptics).
 
 ## Publishing
 
-Not published anywhere yet. `com.feanor08.onering:one-ring` in the snippets
-above is a **placeholder** group/artifact. `./gradlew :one-ring:publishToMavenLocal`
-works today for local consumption; Maven Central publishing (signing, a
-verified namespace) is Phase 10, not yet done.
+Not published to any remote repository yet. `com.feanor08.onering:one-ring`
+in the snippets above is a **placeholder** group/artifact — revisit before
+publishing anywhere beyond `mavenLocal()`.
+
+`./gradlew :one-ring:publishToMavenLocal` works and is verified end-to-end:
+it produces a real AAR, sources jar, POM (with license/developer/SCM
+metadata), and Gradle module metadata under `~/.m2/repository/com/feanor08/onering/one-ring/`,
+and a standalone scratch consumer project (a fresh Gradle project resolving
+`com.feanor08.onering:one-ring:0.1.0-SNAPSHOT` purely from `mavenLocal()`,
+not a `project()` dependency) compiled and assembled a real debug APK against
+it, exercising the DSL, `OneRing()`, and a style preset.
+
+Maven Central publishing (a verified namespace, GPG signing) is still open —
+see `docs/PLAN.md` section 20's "v1 vs deferred" table for what's intentionally
+not set up yet.
 
 ## Building the library itself
 
