@@ -51,11 +51,8 @@ Key decisions:
 
 ## Phases in this pass
 
-Built so far: **Phases 0–5, 7, 8**. **Phase 6 (seek controls) is the one gap** —
-Phases 7–8 were built ahead of it, so `OneRingItem.Seek` exists in the data model
-and the DSL, but committing one is currently a no-op (see Phase 3/4's commit
-branches). Phase 9 (full sample polish, Dokka) and Phase 10 (publishing prep) are
-designed below but not yet built.
+Built so far: **Phases 0–8** (all of them). Phase 9 (full sample polish, Dokka)
+and Phase 10 (publishing prep) are designed below but not yet built.
 
 ### Phase 0 — Bootstrap
 Git init; rename `app/` → `one-ring/` (`com.android.library`, namespace
@@ -100,6 +97,20 @@ unit-testable because `RingFrameBuilder` is pure.
 while the outer edge stays pinned (matching the prototype exactly); close reverses
 through the same `Animatable`s.
 
+### Phase 6 — Seek controls
+Committing a `Seek` item grows it to fully selected on the main ring (becoming
+the close control, siblings fading in place rather than collapsing) or just to
+hover inside a submenu (the parent's close wedge is untouched). The track is
+built via Phase 1's `SeekTrack.build`: a single 300° segment for a main seek, or
+two segments split by the parent's excluded gap for a submenu seek — the same
+complement construction proven in `SeekTrackTest`, so the excluded gap is
+structurally incapable of becoming progress. Drag maps pointer angle to value via
+`SeekTrack.fractionAt`. The intro hint runs `0 → clamp(value+overshoot) → value`
+on a separate `displayValue` Animatable (never the controlled value), cancelled
+immediately by a touch. `OneRingColors`/`Dimensions`/`Motion`/`Behavior` all
+gained seek-specific fields; `OneRingEvent`/`OneRingHapticEvent` gained
+`SeekEntered`/`SeekExited`.
+
 ### Phase 7 — Public API hardening
 `oneRingItems { }` DSL (action/menu/seek builders, duplicate-sibling-id validation
 at construction time). `OneRingEvent` (HighlightChanged/ActionCommitted/
@@ -126,7 +137,9 @@ commit/reject/open/close and naturally deduped by `setHighlight`'s existing
 no-change early return. Reduced motion via
 `Settings.Global.ANIMATOR_DURATION_SCALE` → `effectiveMotion()` swapping every
 spec for `snap()`. A one-time-per-item-count Logcat warning when a wedge's arc
-length falls under 48dp.
+length falls under 48dp. TalkBack can enter and exit a seek control (Phase 6),
+but adjusting its value still needs a real drag gesture — a documented scope
+cut, not a silent gap.
 
 ### Phases 9–10 (designed, not built)
 9 Full sample polish (preset gallery, screenshots) + docs + Dokka · 10 Publishing
@@ -154,8 +167,8 @@ prep (`publishToMavenLocal` smoke test, Maven Central metadata, signing).
 
 ## Open items deferred past this pass
 
-**Seek controls (Phase 6)** are the one designed-but-unbuilt gap in the
-implemented range — `OneRingItem.Seek` exists but committing one is a no-op.
-Publishing metadata (Phase 10) and the automated binary-compatibility freeze are
-also still open; the latter is blocked on tooling (see Phase 7 above), not on
-unfinished work here.
+Full sample polish and Dokka (Phase 9) and publishing metadata (Phase 10) are
+still open. The automated binary-compatibility freeze is also open, but blocked
+on tooling (see Phase 7 above), not on unfinished work here. Semantic drag-to-
+adjust for an active seek control (as opposed to entering/exiting one, which
+works) is a known, documented scope cut within Phase 8.

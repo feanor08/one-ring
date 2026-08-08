@@ -5,13 +5,12 @@ press, scrub, release-to-commit. Not a volume-control widget: a domain-neutral
 building block for automotive controls, quick-action wheels, media controls,
 tool palettes, and nested radial menus.
 
-Status: **early development.** Phases 0–5, 7, and 8 of the [implementation
-blueprint](docs/PLAN.md) are in place: bootstrap, geometry engine, static
+Status: **early development.** Phases 0–8 of the [implementation
+blueprint](docs/PLAN.md) are all in place: bootstrap, geometry engine, static
 rendering, pointer scrub with the stutter-safe animation model, selection
-transitions, nested submenus, the `oneRingItems { }` DSL, events, style
-presets, TalkBack semantics, and haptics. **Seek controls (Phase 6) are the one
-gap** — `OneRingItem.Seek` exists in the model but committing one is currently
-a no-op. The full sample and publishing prep are designed but not yet built —
+transitions, nested submenus, main-ring and submenu seek controls, the
+`oneRingItems { }` DSL, events, style presets, TalkBack semantics, and haptics.
+The full sample polish and publishing prep are designed but not yet built —
 see [`docs/PLAN.md`](docs/PLAN.md) for the phase-by-phase plan.
 
 ## Modules
