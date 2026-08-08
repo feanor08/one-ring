@@ -32,6 +32,9 @@ jobs:
       - name: Assemble
         run: ./gradlew assembleDebug
 
+      - name: API docs build (Dokka)
+        run: ./gradlew :one-ring:dokkaGeneratePublicationHtml
+
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4

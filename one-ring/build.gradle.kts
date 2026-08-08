@@ -1,10 +1,23 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.dokka)
 }
 
 kotlin {
     explicitApi()
+}
+
+dokka {
+    // Dokka's Android-extension auto-detection ("AndroidExtensionWrapper could
+    // not get Android Extension") fails on this AGP-9-built-in-Kotlin module,
+    // the same underlying gap as binary-compatibility-validator's (see the
+    // comment on the root build.gradle.kts). Pointing the source set at
+    // src/main/kotlin directly sidesteps auto-detection entirely.
+    dokkaSourceSets.create("main") {
+        sourceRoots.from("src/main/kotlin")
+    }
+    moduleName.set("one-ring")
 }
 
 android {
