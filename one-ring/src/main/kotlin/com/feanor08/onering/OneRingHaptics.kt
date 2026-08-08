@@ -22,6 +22,12 @@ public enum class OneRingHapticEvent {
 
     /** A menu finished closing. */
     MenuClosed,
+
+    /** A seek control was entered (main-ring or submenu). */
+    SeekEntered,
+
+    /** A seek control was exited. */
+    SeekExited,
 }
 
 /**
@@ -52,7 +58,12 @@ public fun rememberDefaultOneRingHaptics(): OneRingHaptics {
 }
 
 private fun constantFor(event: OneRingHapticEvent): Int? = when (event) {
-    OneRingHapticEvent.HighlightChanged, OneRingHapticEvent.MenuOpened, OneRingHapticEvent.MenuClosed ->
+    OneRingHapticEvent.HighlightChanged,
+    OneRingHapticEvent.MenuOpened,
+    OneRingHapticEvent.MenuClosed,
+    OneRingHapticEvent.SeekEntered,
+    OneRingHapticEvent.SeekExited,
+    ->
         if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.SEGMENT_TICK else HapticFeedbackConstants.CLOCK_TICK
     OneRingHapticEvent.Committed ->
         if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.CONTEXT_CLICK

@@ -46,6 +46,10 @@ public object OneRingDefaults {
         contentHighlighted: Color = Color.White,
         contentDisabled: Color = Color(0xFF9DA3AD),
         center: Color = Color(0xFF1B1B1B),
+        seekTrack: Color = Color(0xFF3A3A3A),
+        seekProgress: Color = Color(0xFF5AA9FF),
+        seekThumb: Color = Color.White,
+        seekThumbBorder: Color = Color(0xFF5AA9FF),
     ): OneRingColors = OneRingColors(
         sector = sector,
         sectorAlternate = sectorAlternate,
@@ -58,6 +62,10 @@ public object OneRingDefaults {
         contentHighlighted = contentHighlighted,
         contentDisabled = contentDisabled,
         center = center,
+        seekTrack = seekTrack,
+        seekProgress = seekProgress,
+        seekThumb = seekThumb,
+        seekThumbBorder = seekThumbBorder,
     )
 
     public fun dimensions(
@@ -76,6 +84,7 @@ public object OneRingDefaults {
         touchSlopRadial: Dp = 18.dp,
         maxSubmenuItemSweepDeg: Float = 110f,
         submenuAlignment: SubmenuAlignment = SubmenuAlignment.Fill,
+        seekThumbRadius: Dp = 7.dp,
     ): OneRingDimensions = OneRingDimensions(
         mainInner = mainInner,
         mainOuter = mainOuter,
@@ -92,6 +101,7 @@ public object OneRingDefaults {
         touchSlopRadial = touchSlopRadial,
         maxSubmenuItemSweepDeg = maxSubmenuItemSweepDeg,
         submenuAlignment = submenuAlignment,
+        seekThumbRadius = seekThumbRadius,
     )
 
     public fun motion(
@@ -104,6 +114,8 @@ public object OneRingDefaults {
         submenuReveal: AnimationSpec<Float> = tween(280, easing = EaseOutCubic),
         iconMorph: AnimationSpec<Float> = tween(200, easing = LinearEasing),
         siblingExit: AnimationSpec<Float> = tween(180, easing = EaseOutCubic),
+        seekHintRise: AnimationSpec<Float> = tween(480, easing = EaseOutCubic),
+        seekHintSettle: AnimationSpec<Float> = tween(190, easing = EaseOutCubic),
     ): OneRingMotion = OneRingMotion(
         hover = hover,
         select = select,
@@ -111,16 +123,22 @@ public object OneRingDefaults {
         submenuReveal = submenuReveal,
         iconMorph = iconMorph,
         siblingExit = siblingExit,
+        seekHintRise = seekHintRise,
+        seekHintSettle = seekHintSettle,
     )
 
     public fun behavior(
         closeOnParentPress: Boolean = true,
         cancelOnExitBand: Boolean = true,
         hapticsEnabled: Boolean = true,
+        seekHintEnabled: Boolean = true,
+        seekHintOvershootFraction: Float = 0.05f,
     ): OneRingBehavior = OneRingBehavior(
         closeOnParentPress = closeOnParentPress,
         cancelOnExitBand = cancelOnExitBand,
         hapticsEnabled = hapticsEnabled,
+        seekHintEnabled = seekHintEnabled,
+        seekHintOvershootFraction = seekHintOvershootFraction,
     )
 
     /** A denser layout for smaller displays: tighter radii, thinner touch slop. */
@@ -147,6 +165,7 @@ public object OneRingDefaults {
         dimensions = dimensions(
             touchSlopRadial = 28.dp,
             sectorStrokeWidth = 3.dp,
+            seekThumbRadius = 10.dp,
         ),
         behavior = behavior(hapticsEnabled = true),
     )
@@ -159,6 +178,8 @@ public object OneRingDefaults {
             close = tween(140, easing = EaseOutCubic),
             submenuReveal = tween(160, easing = EaseOutCubic),
             siblingExit = tween(100, easing = EaseOutCubic),
+            seekHintRise = tween(260, easing = EaseOutCubic),
+            seekHintSettle = tween(120, easing = EaseOutCubic),
         ),
     )
 }

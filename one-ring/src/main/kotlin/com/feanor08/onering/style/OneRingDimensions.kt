@@ -27,4 +27,5 @@ public data class OneRingDimensions internal constructor(
     public val touchSlopRadial: Dp,
     public val maxSubmenuItemSweepDeg: Float,
     public val submenuAlignment: SubmenuAlignment,
+    public val seekThumbRadius: Dp,
 )

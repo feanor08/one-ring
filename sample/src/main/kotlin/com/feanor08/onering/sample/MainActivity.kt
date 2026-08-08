@@ -21,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,8 +36,8 @@ import com.feanor08.onering.sample.theme.OneRingSampleTheme
 /**
  * Sample host activity, reproducing the reference prototype's main menu
  * (Audio, Bluetooth, Messages, Music, Volume, Settings) with the real
- * [OneRing] composable. Pointer interaction lands in Phase 3 -- this
- * currently exercises Phase 2's static rendering only.
+ * [OneRing] composable, including both seek variants: a main-ring Volume and
+ * a Music -> Volume submenu seek.
  */
 public class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,7 +53,10 @@ public class MainActivity : ComponentActivity() {
 
 @Composable
 private fun SampleApp() {
-    val items = remember {
+    var volume by remember { mutableFloatStateOf(0.48f) }
+    var musicVolume by remember { mutableFloatStateOf(0.67f) }
+
+    val items = remember(volume, musicVolume) {
         listOf(
             OneRingItem.Menu(
                 id = "audio",
@@ -92,14 +96,23 @@ private fun SampleApp() {
                     OneRingItem.Action(id = "previous", label = "Previous"),
                     OneRingItem.Action(id = "playPause", label = "Play / Pause"),
                     OneRingItem.Action(id = "next", label = "Next"),
+                    OneRingItem.Seek(
+                        id = "musicVolume",
+                        label = "Volume",
+                        icon = OneRingIcon.Vector(Icons.Rounded.VolumeUp),
+                        value = musicVolume,
+                        onValueChange = { musicVolume = it },
+                        valueLabel = { "${(it * 100).toInt()}%" },
+                    ),
                 ),
             ),
             OneRingItem.Seek(
                 id = "volume",
                 label = "Volume",
                 icon = OneRingIcon.Vector(Icons.Rounded.VolumeUp),
-                value = 0.48f,
-                onValueChange = {},
+                value = volume,
+                onValueChange = { volume = it },
+                valueLabel = { "${(it * 100).toInt()}%" },
             ),
             OneRingItem.Menu(
                 id = "settings",
@@ -131,6 +144,7 @@ private fun SampleApp() {
                     modifier = Modifier.size(360.dp),
                 )
                 Text("Last action: ${lastAction ?: "(none yet)"}", modifier = Modifier.padding(top = 24.dp))
+                Text("Volume: ${(volume * 100).toInt()}%  ·  Music volume: ${(musicVolume * 100).toInt()}%")
             }
         }
     }

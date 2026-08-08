@@ -21,4 +21,10 @@ public sealed interface OneRingEvent {
 
     @Immutable
     public data class MenuClosed(public val itemId: String) : OneRingEvent
+
+    @Immutable
+    public data class SeekEntered(public val itemId: String) : OneRingEvent
+
+    @Immutable
+    public data class SeekExited(public val itemId: String) : OneRingEvent
 }

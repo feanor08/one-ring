@@ -9,18 +9,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.feanor08.onering.geometry.SeekTrack
 import com.feanor08.onering.internal.RingAnimations
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 
-/**
- * The ring's current interaction mode. Grows as later phases add real
- * behavior for each state (Seek); kept to what's actually implemented so far.
- */
+/** The ring's current interaction mode. */
 public enum class OneRingMode {
     Idle,
     Tracking,
     Transitioning,
     Submenu,
+    Seek,
 }
 
 /**
@@ -40,10 +40,12 @@ public class OneRingState internal constructor(initialPath: List<String>) {
 
     internal var touching: Boolean by mutableStateOf(false)
     internal var phase: Phase by mutableStateOf(Phase.Settled)
+    internal var seekSession: SeekSession? by mutableStateOf(null)
 
     public val mode: OneRingMode
         get() = when {
             phase != Phase.Settled -> OneRingMode.Transitioning
+            seekSession != null -> OneRingMode.Seek
             path.isNotEmpty() -> OneRingMode.Submenu
             touching -> OneRingMode.Tracking
             else -> OneRingMode.Idle
@@ -67,6 +69,22 @@ public class OneRingState internal constructor(initialPath: List<String>) {
         object Settled : Phase
         data class Opening(val parentId: String) : Phase
         data class Closing(val parentId: String) : Phase
+    }
+
+    /**
+     * The currently active seek control. [displayValue] (0..1, track-fraction
+     * space) is what's actually drawn -- separate from the controlled
+     * [com.feanor08.onering.OneRingItem.Seek.value] so the intro hint can
+     * animate without ever calling `onValueChange`. [hintJob] is cancelled the
+     * moment a drag starts.
+     */
+    internal class SeekSession(
+        val itemId: String,
+        val track: SeekTrack,
+        val displayValue: Animatable<Float, *> = Animatable(0f),
+    ) {
+        var hintJob: Job? = null
+        var dragging: Boolean = false
     }
 
     public companion object {

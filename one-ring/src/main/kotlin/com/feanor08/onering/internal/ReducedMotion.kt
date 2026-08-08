@@ -27,5 +27,7 @@ internal fun effectiveMotion(motion: OneRingMotion, animationsEnabled: Boolean):
         submenuReveal = instant,
         iconMorph = instant,
         siblingExit = instant,
+        seekHintRise = instant,
+        seekHintSettle = instant,
     )
 }

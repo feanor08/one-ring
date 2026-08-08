@@ -19,4 +19,6 @@ public data class OneRingMotion internal constructor(
     public val submenuReveal: AnimationSpec<Float>,
     public val iconMorph: AnimationSpec<Float>,
     public val siblingExit: AnimationSpec<Float>,
+    public val seekHintRise: AnimationSpec<Float>,
+    public val seekHintSettle: AnimationSpec<Float>,
 )

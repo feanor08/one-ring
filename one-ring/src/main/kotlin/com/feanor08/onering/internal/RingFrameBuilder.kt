@@ -1,8 +1,11 @@
 package com.feanor08.onering.internal
 
+import androidx.compose.ui.geometry.Offset
 import com.feanor08.onering.OneRingItem
 import com.feanor08.onering.geometry.AngularSpan
 import com.feanor08.onering.geometry.RadialBand
+import com.feanor08.onering.geometry.SeekTrack
+import com.feanor08.onering.geometry.polarOffset
 import com.feanor08.onering.style.OneRingColors
 import com.feanor08.onering.style.OneRingDimensions
 
@@ -47,11 +50,13 @@ internal object RingFrameBuilder {
     /**
      * The open submenu's child wedges. [reveal] (0..1) is the shared open/close
      * choreography progress: the outer edge stays pinned at the submenu's outer
-     * radius while the inner radius animates inward from it, and every child
-     * fades in together -- matching the reference prototype exactly (see
-     * docs/interaction-spec.md). Per-child [expansionOf] only becomes visually
-     * meaningful once [reveal] settles at 1 (children aren't interactive mid-
-     * transition, since input is gated during Opening/Closing).
+     * radius while the inner radius animates inward from it -- matching the
+     * reference prototype exactly (see docs/interaction-spec.md). Each child's
+     * own [alphaOf] is multiplied into [reveal], so a seek entry's "other
+     * children fade in place" reads correctly during and after the reveal.
+     * Per-child [expansionOf] only becomes visually meaningful once [reveal]
+     * settles at 1 (children aren't interactive mid-transition, since input is
+     * gated during Opening/Closing).
      */
     fun buildSubmenuArcs(
         children: List<OneRingItem>,
@@ -61,6 +66,7 @@ internal object RingFrameBuilder {
         colors: OneRingColors,
         reveal: Float,
         expansionOf: (itemId: String) -> Float,
+        alphaOf: (itemId: String) -> Float = { 1f },
     ): List<ArcVisual> {
         val childSpans = submenuChildSpans(resolved, dimensions, parentSpan, children.size)
         val clampedReveal = reveal.coerceIn(0f, 1f)
@@ -73,8 +79,63 @@ internal object RingFrameBuilder {
             resolved = resolved,
             colors = colors,
             expansionOf = expansionOf,
-            alphaOf = { clampedReveal },
+            alphaOf = { id -> clampedReveal * alphaOf(id) },
             outerRadiusFor = { expansion -> resolved.submenuOuterFor(expansion) },
+        )
+    }
+
+    /**
+     * The active seek control's track, filled progress, and thumb. [fraction]
+     * (0..1) is the seek's current *display* value -- separate from the real
+     * controlled value so the intro hint can animate without emitting
+     * `onValueChange` (see docs/interaction-spec.md's seek hint section).
+     */
+    fun buildSeekVisual(
+        track: SeekTrack,
+        fraction: Float,
+        band: RadialBand,
+        resolved: ResolvedRing,
+        colors: OneRingColors,
+    ): SeekVisual? {
+        if (track.isEmpty) return null
+        val clampedFraction = fraction.coerceIn(0f, 1f)
+
+        val trackArcs = track.segments.mapIndexed { index, span ->
+            ArcVisual(
+                itemIndex = index,
+                span = span,
+                band = band,
+                fill = colors.seekTrack,
+                stroke = colors.seekTrack,
+                strokeWidthPx = 0f,
+                alpha = 1f,
+            )
+        }
+
+        val fillSpans = mutableListOf<AngularSpan>()
+        track.fillSpans(clampedFraction, fillSpans)
+        val fillArcs = fillSpans.mapIndexed { index, span ->
+            ArcVisual(
+                itemIndex = index,
+                span = span,
+                band = band,
+                fill = colors.seekProgress,
+                stroke = colors.seekProgress,
+                strokeWidthPx = 0f,
+                alpha = 1f,
+            )
+        }
+
+        val thumbAngle = track.angleAt(clampedFraction)
+        val thumbPoint = polarOffset(band.midPx, thumbAngle)
+
+        return SeekVisual(
+            trackArcs = trackArcs,
+            fillArcs = fillArcs,
+            thumbCenter = Offset(resolved.centerPx.x + thumbPoint.x, resolved.centerPx.y + thumbPoint.y),
+            thumbRadiusPx = resolved.seekThumbRadiusPx,
+            thumbColor = colors.seekThumb,
+            thumbBorderColor = colors.seekThumbBorder,
         )
     }
 

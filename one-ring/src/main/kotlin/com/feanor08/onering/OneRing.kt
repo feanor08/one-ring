@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.feanor08.onering.geometry.RadialBand
 import com.feanor08.onering.internal.RingFrameBuilder
 import com.feanor08.onering.internal.RingInteractionController
 import com.feanor08.onering.internal.RingPathPool
@@ -33,16 +34,21 @@ import com.feanor08.onering.style.OneRingStyle
  * ordinary buttons layered on a canvas. Committing a leaf [OneRingItem.Action]
  * fires [onAction]; committing a [OneRingItem.Menu] grows it into the close
  * control, fades its siblings out, and reveals its children as a submenu band
- * (expanding inward from a thin strip at the submenu's outer radius -- see
- * docs/interaction-spec.md), all continuing smoothly from wherever the hover
+ * (expanding inward from a thin strip at the submenu's outer radius); committing
+ * a [OneRingItem.Seek] grows it (fully selected on the main ring, or just to
+ * hover inside a submenu, where the parent stays the close control) and turns
+ * the rest of the ring into a radial drag track -- see docs/interaction-spec.md
+ * for both. Every transition continues smoothly from wherever the hover
  * animation currently was (no "selection stutter" -- see docs/PLAN.md section
- * 10). Only one level of nesting renders/responds to input so far; seek
- * controls land in a later phase.
+ * 10). Only one level of nesting renders/responds to input so far.
  *
  * Every wedge also carries a real (invisible) semantics node, so the whole
  * flow is operable with TalkBack without a single scrub gesture -- explore-
  * by-touch consumes pointer events, so this is a second, complete input path,
  * not decoration. System-level "remove animations" is honored automatically.
+ * (Semantic drag-to-adjust for an active seek is not yet implemented --
+ * TalkBack can enter and exit a seek control, but adjusting its value still
+ * needs a real drag gesture.)
  *
  * @param items the top-level wedges, in clockwise order starting at
  *   [com.feanor08.onering.style.OneRingDimensions.startAngleDeg].
@@ -56,8 +62,8 @@ import com.feanor08.onering.style.OneRingStyle
  *   [com.feanor08.onering.style.OneRingBehavior.hapticsEnabled]. Pass
  *   [OneRingHaptics.None] to disable regardless of that flag.
  * @param onEvent an optional firehose for navigation events (highlight change,
- *   commit, open, close) beyond what [onAction] alone covers -- most
- *   consumers don't need this.
+ *   commit, open, close, seek enter/exit) beyond what [onAction] alone covers
+ *   -- most consumers don't need this.
  * @param center optional content rendered in the ring's empty core.
  */
 @Composable
@@ -95,10 +101,12 @@ public fun OneRing(
         }
 
         val expansionOf = { itemId: String -> state.animations.of(itemId).expansion.value }
+        val alphaOf = { itemId: String -> state.animations.of(itemId).contentAlpha.value }
         val submenu = currentSubmenu(items, state.path)
         val parentSpan = submenu?.let { (parent, _) ->
             resolved.mainSpans.getOrNull(items.indexOfFirst { it.id == parent.id })
         }
+        val seekSession = state.seekSession
 
         Canvas(
             modifier = Modifier
@@ -110,7 +118,7 @@ public fun OneRing(
                 resolved = resolved,
                 colors = style.colors,
                 expansionOf = expansionOf,
-                alphaOf = { itemId -> state.animations.of(itemId).contentAlpha.value },
+                alphaOf = alphaOf,
             )
 
             if (submenu != null && parentSpan != null) {
@@ -122,45 +130,85 @@ public fun OneRing(
                     colors = style.colors,
                     reveal = state.submenuReveal.value,
                     expansionOf = expansionOf,
+                    alphaOf = alphaOf,
                 )
                 frame = frame.copy(arcs = frame.arcs + submenuArcs)
+            }
+
+            if (seekSession != null) {
+                val seekBand = if (state.path.isEmpty()) {
+                    resolved.mainBand
+                } else {
+                    RadialBand(resolved.submenuInnerPx, resolved.submenuOuterPx)
+                }
+                val seekVisual = RingFrameBuilder.buildSeekVisual(
+                    track = seekSession.track,
+                    fraction = seekSession.displayValue.value,
+                    band = seekBand,
+                    resolved = resolved,
+                    colors = style.colors,
+                )
+                frame = frame.copy(seek = seekVisual)
             }
 
             drawRing(frame, pathPool)
         }
 
         val settled = state.phase == OneRingState.Phase.Settled
-        if (settled && submenu == null) {
-            RingSemanticsLayer(
-                items = items,
-                spans = resolved.mainSpans,
-                innerPx = resolved.mainInnerPx,
-                outerPx = resolved.mainOuterPx,
-                centerPx = resolved.centerPx,
-                highlightedId = state.highlightedId,
-                onActivate = { id -> controller.commitDirectly(id) },
-            )
-        } else if (settled && submenu != null && parentSpan != null) {
-            val (parent, children) = submenu
-            RingSemanticsLayer(
-                items = listOf(parent.copy(contentDescription = "Close ${parent.label}")),
-                spans = listOf(parentSpan),
-                innerPx = resolved.mainInnerPx,
-                outerPx = resolved.mainSelectedOuterPx,
-                centerPx = resolved.centerPx,
-                highlightedId = null,
-                onActivate = { controller.closeDirectly() },
-            )
-            val childSpans = submenuChildSpans(resolved, style.dimensions, parentSpan, children.size)
-            RingSemanticsLayer(
-                items = children,
-                spans = childSpans,
-                innerPx = resolved.submenuInnerPx,
-                outerPx = resolved.submenuOuterPx,
-                centerPx = resolved.centerPx,
-                highlightedId = state.highlightedId,
-                onActivate = { id -> controller.commitDirectly(id) },
-            )
+        when {
+            settled && seekSession != null && state.path.isEmpty() -> {
+                val seekItem = items.firstOrNull { it.id == seekSession.itemId }
+                val index = items.indexOfFirst { it.id == seekSession.itemId }
+                val span = resolved.mainSpans.getOrNull(index)
+                if (seekItem != null && span != null) {
+                    RingSemanticsLayer(
+                        items = listOf(closeDescribed(seekItem)),
+                        spans = listOf(span),
+                        innerPx = resolved.mainInnerPx,
+                        outerPx = resolved.mainSelectedOuterPx,
+                        centerPx = resolved.centerPx,
+                        highlightedId = null,
+                        onActivate = { controller.closeDirectly() },
+                    )
+                }
+            }
+            settled && submenu == null -> {
+                RingSemanticsLayer(
+                    items = items,
+                    spans = resolved.mainSpans,
+                    innerPx = resolved.mainInnerPx,
+                    outerPx = resolved.mainOuterPx,
+                    centerPx = resolved.centerPx,
+                    highlightedId = state.highlightedId,
+                    onActivate = { id -> controller.commitDirectly(id) },
+                )
+            }
+            settled && submenu != null && parentSpan != null -> {
+                val (parent, children) = submenu
+                RingSemanticsLayer(
+                    items = listOf(closeDescribed(parent)),
+                    spans = listOf(parentSpan),
+                    innerPx = resolved.mainInnerPx,
+                    outerPx = resolved.mainSelectedOuterPx,
+                    centerPx = resolved.centerPx,
+                    highlightedId = null,
+                    onActivate = { controller.closeDirectly() },
+                )
+                // While a submenu child seek is active, only the close control
+                // above is exposed -- adjusting the seek still needs a drag.
+                if (seekSession == null) {
+                    val childSpans = submenuChildSpans(resolved, style.dimensions, parentSpan, children.size)
+                    RingSemanticsLayer(
+                        items = children,
+                        spans = childSpans,
+                        innerPx = resolved.submenuInnerPx,
+                        outerPx = resolved.submenuOuterPx,
+                        centerPx = resolved.centerPx,
+                        highlightedId = state.highlightedId,
+                        onActivate = { id -> controller.commitDirectly(id) },
+                    )
+                }
+            }
         }
 
         if (center != null) {
@@ -175,4 +223,10 @@ public fun OneRing(
             }
         }
     }
+}
+
+private fun closeDescribed(item: OneRingItem): OneRingItem = when (item) {
+    is OneRingItem.Menu -> item.copy(contentDescription = "Close ${item.label}")
+    is OneRingItem.Seek -> item.copy(contentDescription = "Close ${item.label}")
+    is OneRingItem.Action -> item
 }

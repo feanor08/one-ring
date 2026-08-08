@@ -15,7 +15,12 @@ import com.feanor08.onering.geometry.RadialBand
  * test. See docs/PLAN.md sections 8.2 and 18.
  */
 @Immutable
-internal data class RingFrame(val centerPx: Offset, val arcs: List<ArcVisual>, val centerCircle: CircleVisual?)
+internal data class RingFrame(
+    val centerPx: Offset,
+    val arcs: List<ArcVisual>,
+    val centerCircle: CircleVisual?,
+    val seek: SeekVisual? = null,
+)
 
 @Immutable
 internal data class ArcVisual(
@@ -30,3 +35,14 @@ internal data class ArcVisual(
 
 @Immutable
 internal data class CircleVisual(val center: Offset, val radiusPx: Float, val fill: Color)
+
+/** The active seek control's track background, filled progress, and thumb. */
+@Immutable
+internal data class SeekVisual(
+    val trackArcs: List<ArcVisual>,
+    val fillArcs: List<ArcVisual>,
+    val thumbCenter: Offset,
+    val thumbRadiusPx: Float,
+    val thumbColor: Color,
+    val thumbBorderColor: Color,
+)

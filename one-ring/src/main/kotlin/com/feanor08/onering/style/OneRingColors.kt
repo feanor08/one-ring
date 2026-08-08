@@ -22,4 +22,8 @@ public data class OneRingColors internal constructor(
     public val contentHighlighted: Color,
     public val contentDisabled: Color,
     public val center: Color,
+    public val seekTrack: Color,
+    public val seekProgress: Color,
+    public val seekThumb: Color,
+    public val seekThumbBorder: Color,
 )

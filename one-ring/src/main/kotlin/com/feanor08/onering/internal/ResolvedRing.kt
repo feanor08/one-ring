@@ -33,6 +33,7 @@ internal data class ResolvedRing(
     val touchSlopRadialPx: Float,
     val mainSpans: List<AngularSpan>,
     val submenuGapDeg: Float,
+    val seekThumbRadiusPx: Float,
 ) {
     val mainBand: RadialBand get() = RadialBand(mainInnerPx, mainOuterPx)
 
@@ -92,5 +93,6 @@ internal fun resolveRing(sizePx: Size, density: Density, dimensions: OneRingDime
         touchSlopRadialPx = with(density) { dimensions.touchSlopRadial.toPx() },
         mainSpans = mainSpans,
         submenuGapDeg = submenuGapDeg,
+        seekThumbRadiusPx = with(density) { dimensions.seekThumbRadius.toPx() },
     )
 }
