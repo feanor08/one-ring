@@ -27,10 +27,11 @@ private val TargetSize: Dp = 48.dp
  * Invisible, real semantics nodes over the main ring so TalkBack (or any
  * accessibility service) can operate [com.feanor08.onering.OneRing] without a
  * single scrub gesture -- explore-by-touch consumes pointer events, so this is
- * a second, complete input path, not decoration. There's no icon/content
- * layer yet (see docs/PLAN.md), so each node is a fixed-size touch target
- * centered on its wedge's midpoint rather than shaped to the wedge itself;
- * that's enough for correct focus order, description, state, and activation.
+ * a second, complete input path, not decoration. Each node is a fixed-size
+ * touch target centered on its wedge's midpoint rather than shaped to the
+ * wedge itself; that's enough for correct focus order, description, state, and
+ * activation. [RingContentLayer] draws the visible icons separately and clears
+ * its own semantics, so each wedge publishes exactly one describable node.
  */
 @Composable
 internal fun RingSemanticsLayer(

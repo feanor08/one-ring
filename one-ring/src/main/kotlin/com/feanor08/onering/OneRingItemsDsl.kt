@@ -20,8 +20,9 @@ public class OneRingItemsScope internal constructor() {
         enabled: Boolean = true,
         contentDescription: String? = null,
         payload: Any? = null,
+        weight: Float = 1f,
     ) {
-        items += OneRingItem.Action(id, label, icon, enabled, contentDescription, payload)
+        items += OneRingItem.Action(id, label, icon, enabled, contentDescription, payload, weight)
     }
 
     public fun menu(
@@ -31,10 +32,11 @@ public class OneRingItemsScope internal constructor() {
         enabled: Boolean = true,
         contentDescription: String? = null,
         closeIcon: OneRingIcon? = null,
+        weight: Float = 1f,
         content: OneRingItemsScope.() -> Unit,
     ) {
         val children = OneRingItemsScope().apply(content).build()
-        items += OneRingItem.Menu(id, label, icon, enabled, contentDescription, children, closeIcon)
+        items += OneRingItem.Menu(id, label, icon, enabled, contentDescription, children, closeIcon, weight)
     }
 
     public fun seek(
@@ -50,6 +52,7 @@ public class OneRingItemsScope internal constructor() {
         onValueChangeFinished: (() -> Unit)? = null,
         valueLabel: ((Float) -> String)? = null,
         closeIcon: OneRingIcon? = null,
+        weight: Float = 1f,
     ) {
         items += OneRingItem.Seek(
             id = id,
@@ -64,6 +67,7 @@ public class OneRingItemsScope internal constructor() {
             onValueChangeFinished = onValueChangeFinished,
             valueLabel = valueLabel,
             closeIcon = closeIcon,
+            weight = weight,
         )
     }
 
@@ -78,13 +82,16 @@ public class OneRingItemsScope internal constructor() {
  * Builds a top-level [OneRingItem] list, e.g.:
  * ```
  * val items = oneRingItems {
- *     menu("music", "Music") {
+ *     menu("music", "Music", weight = 2f) {   // twice the sweep of its siblings
  *         action("prev", "Previous")
  *         seek("vol", "Volume", value = musicVolume, onValueChange = { musicVolume = it })
  *     }
  *     seek("volume", "Volume", value = volume, onValueChange = { volume = it })
  * }
  * ```
+ *
+ * `weight` is relative to siblings in the same band and defaults to `1f`, so
+ * omitting it everywhere gives the equal sectors you'd expect.
  */
 public fun oneRingItems(content: OneRingItemsScope.() -> Unit): List<OneRingItem> =
     OneRingItemsScope().apply(content).build()

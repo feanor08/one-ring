@@ -2,9 +2,7 @@ package com.feanor08.onering.internal
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.MonotonicFrameClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -13,23 +11,6 @@ import kotlinx.coroutines.withContext
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
-
-/**
- * A [MonotonicFrameClock] whose frame ticks are ordinary [delay] calls, so
- * `kotlinx-coroutines-test`'s virtual time scheduler (`advanceTimeBy`/
- * `runCurrent`) drives it precisely -- no wall-clock waiting, no dependency on
- * compose-ui-test (which is androidTest-only). This is the standard technique
- * for exercising [androidx.compose.animation.core.Animatable] on a plain JVM.
- */
-private class VirtualFrameClock(private val frameMillis: Long = 16) : MonotonicFrameClock {
-    private var timeNanos = 0L
-
-    override suspend fun <R> withFrameNanos(onFrame: (Long) -> R): R {
-        delay(frameMillis)
-        timeNanos += frameMillis * 1_000_000
-        return onFrame(timeNanos)
-    }
-}
 
 /**
  * The core invariant behind the "no selection stutter" requirement (see

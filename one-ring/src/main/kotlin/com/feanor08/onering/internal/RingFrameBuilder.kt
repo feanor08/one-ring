@@ -18,7 +18,7 @@ import com.feanor08.onering.style.OneRingDimensions
  */
 internal object RingFrameBuilder {
     fun buildIdle(items: List<OneRingItem>, resolved: ResolvedRing, colors: OneRingColors): RingFrame =
-        build(items, resolved, colors, expansionOf = { 0f })
+        build(items, resolved, colors, expansionOf = { 0f }, highlightedId = null)
 
     fun build(
         items: List<OneRingItem>,
@@ -26,6 +26,14 @@ internal object RingFrameBuilder {
         colors: OneRingColors,
         expansionOf: (itemId: String) -> Float,
         alphaOf: (itemId: String) -> Float = { 1f },
+        highlightedId: String? = null,
+        // See OneRingState.mainSiblingReveal: 1 = every non-active wedge at
+        // full radius (the resting default), lerping toward 0 (collapsed to
+        // the inner edge) while a submenu/seek is open. [activeItemId] is
+        // exempted -- its radius stays purely a function of its own
+        // continuous expansion, exactly as before this parameter existed.
+        mainSiblingRevealProgress: Float = 1f,
+        activeItemId: String? = null,
     ): RingFrame {
         val arcs = buildArcs(
             items = items,
@@ -35,7 +43,10 @@ internal object RingFrameBuilder {
             colors = colors,
             expansionOf = expansionOf,
             alphaOf = alphaOf,
+            highlightedId = highlightedId,
             outerRadiusFor = { expansion -> resolved.mainOuterFor(expansion) },
+            siblingRevealProgress = mainSiblingRevealProgress,
+            activeItemId = activeItemId,
         )
 
         val centerCircle = CircleVisual(
@@ -67,8 +78,9 @@ internal object RingFrameBuilder {
         reveal: Float,
         expansionOf: (itemId: String) -> Float,
         alphaOf: (itemId: String) -> Float = { 1f },
+        highlightedId: String? = null,
     ): List<ArcVisual> {
-        val childSpans = submenuChildSpans(resolved, dimensions, parentSpan, children.size)
+        val childSpans = submenuChildSpans(resolved, dimensions, parentSpan, children)
         val clampedReveal = reveal.coerceIn(0f, 1f)
         val innerPx = lerp(resolved.submenuOuterPx, resolved.submenuInnerPx, clampedReveal)
 
@@ -80,6 +92,7 @@ internal object RingFrameBuilder {
             colors = colors,
             expansionOf = expansionOf,
             alphaOf = { id -> clampedReveal * alphaOf(id) },
+            highlightedId = highlightedId,
             outerRadiusFor = { expansion -> resolved.submenuOuterFor(expansion) },
         )
     }
@@ -147,19 +160,38 @@ internal object RingFrameBuilder {
         colors: OneRingColors,
         expansionOf: (itemId: String) -> Float,
         alphaOf: (itemId: String) -> Float,
+        highlightedId: String?,
         outerRadiusFor: (expansion: Float) -> Float,
+        siblingRevealProgress: Float = 1f,
+        activeItemId: String? = null,
     ): List<ArcVisual> = items.mapIndexedNotNull { index, item ->
         val span = spans.getOrNull(index) ?: return@mapIndexedNotNull null
         val expansion = expansionOf(item.id)
-        val active = expansion > 0.03f
+        // Accent tracks the *pointer*, never structural state. Deriving it from
+        // expansion instead would leave an open menu's parent (which sits at the
+        // selected radius while it acts as the back control) permanently lit up,
+        // as if it were still mid-selection. Geometry and highlight are separate
+        // concerns: the wedge can stay expanded and still look at rest.
+        val highlighted = highlightedId != null && item.id == highlightedId
         val fill = when {
             !item.enabled -> colors.sectorDisabled
-            active -> colors.sectorHighlighted
+            highlighted -> colors.sectorHighlighted
             index % 2 == 0 -> colors.sector
             else -> colors.sectorAlternate
         }
-        val stroke = if (active) colors.strokeHighlighted else colors.stroke
-        val outerPx = outerRadiusFor(expansion).coerceAtLeast(innerRadiusPx)
+        val stroke = if (highlighted) colors.strokeHighlighted else colors.stroke
+        val rawOuterPx = outerRadiusFor(expansion)
+        // The active item (an open menu's parent, or an active main seek) is
+        // never subject to the shared sibling reveal -- its radius is purely a
+        // function of its own continuous expansion. Every other item lerps
+        // between the inner edge (reveal=0, zero thickness) and its normal
+        // radius (reveal=1), so a whole ring of siblings collapses/regrows as
+        // one wedge-shaped transform instead of an instant appear/disappear.
+        val outerPx = if (item.id == activeItemId) {
+            rawOuterPx.coerceAtLeast(innerRadiusPx)
+        } else {
+            lerp(innerRadiusPx, rawOuterPx, siblingRevealProgress.coerceIn(0f, 1f)).coerceAtLeast(innerRadiusPx)
+        }
         ArcVisual(
             itemIndex = index,
             span = span,

@@ -16,6 +16,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.feanor08.onering.geometry.RadialBand
+import com.feanor08.onering.internal.RingContentLayer
 import com.feanor08.onering.internal.RingFrameBuilder
 import com.feanor08.onering.internal.RingInteractionController
 import com.feanor08.onering.internal.RingPathPool
@@ -23,6 +24,7 @@ import com.feanor08.onering.internal.RingSemanticsLayer
 import com.feanor08.onering.internal.currentSubmenu
 import com.feanor08.onering.internal.drawRing
 import com.feanor08.onering.internal.effectiveMotion
+import com.feanor08.onering.internal.lerp
 import com.feanor08.onering.internal.rememberAnimationsEnabled
 import com.feanor08.onering.internal.resolveRing
 import com.feanor08.onering.internal.submenuChildSpans
@@ -92,7 +94,7 @@ public fun OneRing(
         val sizePx = with(density) { Size(maxWidth.toPx(), maxHeight.toPx()) }
         if (sizePx.width <= 0f || sizePx.height <= 0f) return@BoxWithConstraints
 
-        val resolved = resolveRing(sizePx, density, style.dimensions, items.size)
+        val resolved = resolveRing(sizePx, density, style.dimensions, items.map { it.weight })
         val motion = effectiveMotion(style.motion, animationsEnabled)
         controller.update(items, resolved, style.dimensions, motion, style.behavior, haptics, onAction, onEvent)
 
@@ -102,11 +104,25 @@ public fun OneRing(
 
         val expansionOf = { itemId: String -> state.animations.of(itemId).expansion.value }
         val alphaOf = { itemId: String -> state.animations.of(itemId).contentAlpha.value }
+        val iconAlphaOf = { itemId: String -> state.animations.of(itemId).iconAlpha.value }
+        val backIconAlphaOf = { itemId: String -> state.animations.of(itemId).backIconAlpha.value }
         val submenu = currentSubmenu(items, state.path)
         val parentSpan = submenu?.let { (parent, _) ->
             resolved.mainSpans.getOrNull(items.indexOfFirst { it.id == parent.id })
         }
         val seekSession = state.seekSession
+
+        // The one main-ring item currently exempt from mainSiblingReveal --
+        // whichever wedge owns the open submenu or active seek. Phase.Opening/
+        // Closing carry this id synchronously from the very first frame of a
+        // transition (before path/seekSession are published), so there's no
+        // gap where a transitioning item is briefly treated as a sibling.
+        val activeMainItemId: String? = when (val phase = state.phase) {
+            is OneRingState.Phase.Opening -> phase.parentId
+            is OneRingState.Phase.Closing -> phase.parentId
+            else -> state.path.firstOrNull() ?: seekSession?.itemId
+        }
+        val mainSiblingReveal = state.mainSiblingReveal.value.coerceIn(0f, 1f)
 
         Canvas(
             modifier = Modifier
@@ -119,6 +135,9 @@ public fun OneRing(
                 colors = style.colors,
                 expansionOf = expansionOf,
                 alphaOf = alphaOf,
+                highlightedId = state.highlightedId,
+                mainSiblingRevealProgress = mainSiblingReveal,
+                activeItemId = activeMainItemId,
             )
 
             if (submenu != null && parentSpan != null) {
@@ -131,6 +150,7 @@ public fun OneRing(
                     reveal = state.submenuReveal.value,
                     expansionOf = expansionOf,
                     alphaOf = alphaOf,
+                    highlightedId = state.highlightedId,
                 )
                 frame = frame.copy(arcs = frame.arcs + submenuArcs)
             }
@@ -152,6 +172,48 @@ public fun OneRing(
             }
 
             drawRing(frame, pathPool)
+        }
+
+        // Icons/content are real child nodes rather than a Canvas pass, since
+        // OneRingIcon.Content is arbitrary consumer composable content. Which
+        // glyph shows is decided by the two animated alphas, not by a flag --
+        // that's what lets the icon -> X change be staged rather than crossfaded.
+        RingContentLayer(
+            items = items,
+            spans = resolved.mainSpans,
+            innerPx = resolved.mainInnerPx,
+            centerPx = resolved.centerPx,
+            colors = style.colors,
+            highlightedId = state.highlightedId,
+            outerPxOf = { id ->
+                val base = resolved.mainOuterFor(expansionOf(id))
+                if (id == activeMainItemId) base else lerp(resolved.mainInnerPx, base, mainSiblingReveal)
+            },
+            alphaOf = alphaOf,
+            iconAlphaOf = iconAlphaOf,
+            backIconAlphaOf = backIconAlphaOf,
+        )
+
+        if (submenu != null && parentSpan != null) {
+            val (_, children) = submenu
+            val childSpans = submenuChildSpans(resolved, style.dimensions, parentSpan, children)
+            // Content rides the wedge as it grows: the same reveal-lerped inner
+            // radius the arcs use, so icons travel inward with their sector
+            // instead of sitting at the final radius while the shape catches up.
+            val reveal = state.submenuReveal.value.coerceIn(0f, 1f)
+            RingContentLayer(
+                items = children,
+                spans = childSpans,
+                innerPx = lerp(resolved.submenuOuterPx, resolved.submenuInnerPx, reveal),
+                centerPx = resolved.centerPx,
+                colors = style.colors,
+                highlightedId = state.highlightedId,
+                outerPxOf = { id -> resolved.submenuOuterFor(expansionOf(id).coerceIn(0f, 1f)) },
+                alphaOf = { id -> alphaOf(id) * reveal },
+                scale = REVEAL_MIN_CONTENT_SCALE + (1f - REVEAL_MIN_CONTENT_SCALE) * reveal,
+                iconAlphaOf = iconAlphaOf,
+                backIconAlphaOf = backIconAlphaOf,
+            )
         }
 
         val settled = state.phase == OneRingState.Phase.Settled
@@ -197,7 +259,7 @@ public fun OneRing(
                 // While a submenu child seek is active, only the close control
                 // above is exposed -- adjusting the seek still needs a drag.
                 if (seekSession == null) {
-                    val childSpans = submenuChildSpans(resolved, style.dimensions, parentSpan, children.size)
+                    val childSpans = submenuChildSpans(resolved, style.dimensions, parentSpan, children)
                     RingSemanticsLayer(
                         items = children,
                         spans = childSpans,
@@ -224,6 +286,13 @@ public fun OneRing(
         }
     }
 }
+
+/**
+ * How small submenu content starts as its wedge grows in. Deliberately subtle:
+ * the geometric growth is the effect, and a scale that started near zero would
+ * read as a second, competing animation.
+ */
+private const val REVEAL_MIN_CONTENT_SCALE = 0.85f
 
 private fun closeDescribed(item: OneRingItem): OneRingItem = when (item) {
     is OneRingItem.Menu -> item.copy(contentDescription = "Close ${item.label}")

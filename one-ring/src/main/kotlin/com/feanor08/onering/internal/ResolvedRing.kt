@@ -57,7 +57,20 @@ internal fun RadialSize.resolvePx(baseRadiusPx: Float, density: Density): Float 
     }
 }
 
-internal fun resolveRing(sizePx: Size, density: Density, dimensions: OneRingDimensions, itemCount: Int): ResolvedRing {
+/** Equal-weight convenience overload -- identical to passing [itemCount] weights of `1f`. */
+internal fun resolveRing(sizePx: Size, density: Density, dimensions: OneRingDimensions, itemCount: Int): ResolvedRing =
+    resolveRing(sizePx, density, dimensions, List(itemCount.coerceAtLeast(0)) { 1f })
+
+/**
+ * @param weights each item's relative angular size, in item order. Pass a list
+ *   of `1f` (or use the [resolveRing] overload taking a count) for equal wedges.
+ */
+internal fun resolveRing(
+    sizePx: Size,
+    density: Density,
+    dimensions: OneRingDimensions,
+    weights: List<Float>,
+): ResolvedRing {
     val baseRadius = min(sizePx.width, sizePx.height) / 2f
     val center = Offset(sizePx.width / 2f, sizePx.height / 2f)
 
@@ -67,8 +80,8 @@ internal fun resolveRing(sizePx: Size, density: Density, dimensions: OneRingDime
     // main band's outer radius, so the visual gap stays constant in dp.
     val gapDeg = if (mainOuterPx > 0f) (gapPx / mainOuterPx) * (180f / Math.PI.toFloat()) else 0f
 
-    val mainSpans = RingLayout.spans(
-        count = itemCount,
+    val mainSpans = RingLayout.weighted(
+        weights = weights,
         startDeg = dimensions.startAngleDeg,
         totalSweepDeg = dimensions.totalSweepDeg,
         gapDeg = gapDeg,

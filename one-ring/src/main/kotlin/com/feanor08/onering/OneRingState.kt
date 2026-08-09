@@ -62,6 +62,18 @@ public class OneRingState internal constructor(initialPath: List<String>) {
      */
     internal val submenuReveal: Animatable<Float, *> = Animatable(0f)
 
+    /**
+     * A single shared reveal progress (0..1) for the main ring's *non-active*
+     * wedges -- every item except whichever one currently owns an open submenu
+     * or an active main-ring seek. 1 = full main ring (the resting state);
+     * opening a submenu animates this toward 0 (siblings collapse to zero
+     * radial thickness at the inner edge, the mirror of the submenu's own
+     * outer-to-inner growth), and closing animates it back to 1 (siblings grow
+     * back outward from the inner edge). The active item's own radius is never
+     * driven by this -- it has its own continuous [ItemAnimation.expansion].
+     */
+    internal val mainSiblingReveal: Animatable<Float, *> = Animatable(1f)
+
     internal lateinit var scope: CoroutineScope
 
     /** Input is gated to nothing but a fresh down while any phase other than [Settled] is active. */

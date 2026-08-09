@@ -1,5 +1,7 @@
 package com.feanor08.onering.internal
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.geometry.Offset
@@ -41,6 +43,27 @@ import kotlin.math.roundToInt
  * fires [onAction] and closes back to the top level); deeper nesting is a
  * later phase.
  */
+/**
+ * How long after a parent commits before its submenu starts growing. Small
+ * enough that the two read as one coordinated transition (the submenu is still
+ * growing while the parent is still expanding), large enough that the parent
+ * visibly commits first.
+ */
+private const val SUBMENU_REVEAL_STAGGER_MS = 45L
+
+/**
+ * How late into a wedge's geometry change its paired glyph (X on open, the
+ * original icon on close) begins fading in, expressed as the remaining
+ * fraction of the distance still to travel. 0.22 means the fade starts once
+ * ~78% of the distance has been covered -- late enough that it arrives
+ * together with the settled shape rather than visibly trailing it, early
+ * enough that it isn't tacked on after a dead pause. See [watchThenFade].
+ */
+private const val LATE_GLYPH_FADE_FRACTION = 0.22f
+
+/** Polling granularity for [watchThenFade] -- coarse is fine, it only gates *when* a fade starts. */
+private const val GEOMETRY_POLL_MS = 16L
+
 internal class RingInteractionController(private val state: OneRingState) {
     private var items: List<OneRingItem> = emptyList()
     private var resolved: ResolvedRing? = null
@@ -75,7 +98,8 @@ internal class RingInteractionController(private val state: OneRingState) {
         if (behavior?.hapticsEnabled == true) haptics.perform(event)
     }
 
-    private fun setHighlight(id: String?) {
+    /** Internal rather than private so transition tests can start a real hover before committing. */
+    internal fun setHighlight(id: String?) {
         if (state.highlightedId == id) return
         val previous = state.highlightedId
         state.highlightedId = id
@@ -83,10 +107,16 @@ internal class RingInteractionController(private val state: OneRingState) {
         haptic(OneRingHapticEvent.HighlightChanged)
         val hoverSpec = motion?.hover ?: return
 
-        previous?.let { previousId ->
+        // The current back control already sits at its expanded geometry; hover
+        // must not drag it back down to (or up from) the ordinary hover radius.
+        // Highlighting it is a *styling* change only -- see the class doc on
+        // structural vs interaction state.
+        val backControl = closeTargetId()
+
+        previous?.takeIf { it != backControl }?.let { previousId ->
             state.scope.launch { state.animations.of(previousId).expansion.animateTo(0f, hoverSpec) }
         }
-        id?.let { newId ->
+        id?.takeIf { it != backControl }?.let { newId ->
             state.scope.launch { state.animations.of(newId).expansion.animateTo(1f, hoverSpec) }
         }
     }
@@ -122,43 +152,72 @@ internal class RingInteractionController(private val state: OneRingState) {
     private fun closeTargetId(): String? =
         if (state.path.isEmpty()) state.seekSession?.itemId else state.path.lastOrNull()
 
-    /** True (and a close/exit transition started) if [position] hits the current close control's wedge. */
-    private fun tryClosePress(position: Offset): Boolean {
-        val r = resolved ?: return false
-        val targetId = closeTargetId() ?: return false
-        if (state.path.isNotEmpty() && behavior?.closeOnParentPress != true) return false
-        val span = parentSpanFor(targetId, r) ?: return false
+    /**
+     * The id of the back (X) control if [position] is inside its wedge, else
+     * null. This is an ordinary hit test feeding ordinary highlighting -- the
+     * back control commits on release like every other wedge, so pressing it
+     * and scrubbing away cancels the close.
+     */
+    /** Test hook for [hitBackControl], which is otherwise only reachable through a pointer gesture. */
+    internal fun hitBackControlForTest(position: Offset): String? = hitBackControl(position)
+
+    private fun hitBackControl(position: Offset): String? {
+        val r = resolved ?: return null
+        val targetId = closeTargetId() ?: return null
+        if (state.path.isNotEmpty() && behavior?.closeOnParentPress != true) return null
+        val span = parentSpanFor(targetId, r) ?: return null
 
         val dx = position.x - r.centerPx.x
         val dy = position.y - r.centerPx.y
         val angle = angleOfOffset(dx, dy)
         val radius = hypot(dx, dy)
-        val band = RadialBand(r.mainInnerPx, r.mainSelectedOuterPx + r.touchSlopRadialPx)
-        if (!band.contains(radius) || !span.contains(angle)) return false
-
-        if (state.path.isEmpty()) beginCloseMainSeek(targetId) else beginClose(targetId)
-        return true
+        val band = RadialBand(
+            (r.mainInnerPx - r.touchSlopRadialPx).coerceAtLeast(0f),
+            r.mainSelectedOuterPx + r.touchSlopRadialPx,
+        )
+        if (!band.contains(radius) || !span.contains(angle)) return null
+        return targetId
     }
 
-    /** Directly closes the current submenu or main-ring seek, as if its close wedge were pressed. */
+    /**
+     * Directly closes the current submenu or main-ring seek, as if its close
+     * wedge were pressed. Ignored mid-transition, matching the pointer path
+     * (which is gated in [handleGestures]) -- otherwise a close could interleave
+     * with an in-flight open and the two coroutines would race to set `phase`
+     * and `path`, leaving the ring stuck in a transitional state.
+     */
     fun closeDirectly() {
+        if (state.phase != OneRingState.Phase.Settled) return
         val targetId = closeTargetId() ?: return
         if (state.path.isEmpty()) beginCloseMainSeek(targetId) else beginClose(targetId)
     }
 
-    /** Directly commits [id] as if it had been highlighted and released -- for the semantics layer. */
+    /**
+     * Directly commits [id] as if it had been highlighted and released -- for
+     * the semantics layer. Gated mid-transition for the same reason as
+     * [closeDirectly].
+     */
     fun commitDirectly(id: String) {
+        if (state.phase != OneRingState.Phase.Settled) return
         setHighlight(id)
         commit()
     }
 
+    /**
+     * Release-to-commit. The back control is committed here like any other
+     * wedge rather than acting on pointer-down, so pressing X and scrubbing
+     * away before release does *not* close -- consistent with the rest of the
+     * wheel.
+     */
     private fun commit() {
         val id = state.highlightedId ?: return
         setHighlight(null)
-        if (state.path.isNotEmpty()) {
-            commitSubmenuChild(id)
-        } else {
-            commitMainItem(id)
+        val session = state.seekSession
+        when {
+            state.path.isNotEmpty() && id == state.path.last() -> beginClose(id)
+            state.path.isNotEmpty() -> commitSubmenuChild(id)
+            session != null && id == session.itemId -> beginCloseMainSeek(id)
+            else -> commitMainItem(id)
         }
     }
 
@@ -209,16 +268,47 @@ internal class RingInteractionController(private val state: OneRingState) {
             state.scope.launch { state.animations.of(sibling.id).expansion.animateTo(0f, m.hover) }
             state.scope.launch { state.animations.of(sibling.id).contentAlpha.animateTo(0f, m.siblingExit) }
         }
-        state.scope.launch { state.submenuReveal.animateTo(1f, m.submenuReveal) }
+        // Non-selected main wedges collapse toward the inner radius at the same
+        // time the parent grows and the submenu reveals -- the mirror of
+        // beginClose's regrow -- so the whole ring reads as one continuous
+        // transform instead of "selected item grows, the rest just vanishes".
+        state.scope.launch { state.mainSiblingReveal.animateTo(0f, m.select) }
+
+        // Stage 1 of the icon -> X change: the original glyph fades out on its
+        // own, before the X is given any opacity at all. See watchThenFade.
+        state.scope.launch { state.animations.of(item.id).iconAlpha.animateTo(0f, m.iconMorph) }
+
+        val expansion = state.animations.of(item.id).expansion
+        val startExpansion = expansion.value
+        // The parent's own expansion continues from wherever its hover animation
+        // currently is (see ItemAnimation), never from a hardcoded start, so
+        // there is no stutter regardless of how far into the hover animation the
+        // release landed.
+        val parentExpansion = state.scope.launch { expansion.animateTo(2f, m.select) }
+        // Stage 3: the X begins fading in during roughly the final quarter of
+        // the wedge's growth rather than only once it's fully settled.
+        watchThenFade(expansion, startExpansion, 2f, state.animations.of(item.id).backIconAlpha, 1f, m.iconMorph)
 
         state.scope.launch {
-            // The parent's own expansion animation is the single source of truth
-            // for when the open transition settles -- it continues from wherever
-            // its hover animation currently is (see ItemAnimation), never from a
-            // hardcoded start, so there is no stutter regardless of how far into
-            // the hover animation the release landed.
-            state.animations.of(item.id).expansion.animateTo(2f, m.select)
+            // Ordering here is the whole reason the submenu appears to grow.
+            // The renderer only draws submenu arcs when `path` names an open
+            // menu, so publishing `path` late (e.g. after the parent's select
+            // animation) means every intermediate reveal value is computed into
+            // a submenu that isn't being drawn yet -- the first visible frame
+            // then lands at reveal ~1 and the submenu pops in at full size.
+            //
+            // So: pin the reveal to zero thickness FIRST, publish `path` only
+            // once it is zero, and only then animate it open. Input stays gated
+            // by Phase.Opening throughout, so an observable path mid-transition
+            // can't be interacted with.
+            state.submenuReveal.snapTo(0f)
             state.path = state.path + item.id
+            // A short stagger so the parent visibly commits first; the two
+            // animations still overlap for most of their duration.
+            delay(SUBMENU_REVEAL_STAGGER_MS)
+            state.submenuReveal.animateTo(1f, m.submenuReveal)
+
+            parentExpansion.join()
             state.phase = OneRingState.Phase.Settled
             onEvent?.invoke(OneRingEvent.MenuOpened(item.id))
             haptic(OneRingHapticEvent.MenuOpened)
@@ -235,21 +325,73 @@ internal class RingInteractionController(private val state: OneRingState) {
         state.seekSession = null
         exitingSeekId?.let { seekId ->
             state.scope.launch { state.animations.of(seekId).expansion.animateTo(0f, m.hover) }
-            state.scope.launch { state.animations.of(seekId).contentAlpha.animateTo(1f, m.siblingExit) }
+        }
+
+        // Every current submenu child's alpha is restored here, not just an
+        // exiting seek's -- a sibling dimmed while one child was mid-seek (see
+        // beginSubmenuSeek) must not stay invisible the *next* time this
+        // submenu opens. RingAnimations entries persist for the state's whole
+        // lifetime, so a channel nothing ever restores stays broken forever,
+        // not just for this transition.
+        currentSubmenu(items, state.path)?.second?.forEach { child ->
+            state.scope.launch { state.animations.of(child.id).contentAlpha.animateTo(1f, m.siblingExit) }
         }
 
         items.asSequence().filter { it.id != parentId }.forEach { sibling ->
             state.scope.launch { state.animations.of(sibling.id).contentAlpha.animateTo(1f, m.siblingExit) }
         }
-        state.scope.launch { state.submenuReveal.animateTo(0f, m.submenuReveal) }
+        // Non-selected main wedges regrow from the inner radius at the same
+        // time the submenu collapses and the parent shrinks -- see beginOpen.
+        state.scope.launch { state.mainSiblingReveal.animateTo(1f, m.close) }
 
         state.scope.launch {
-            state.animations.of(parentId).expansion.animateTo(0f, m.close)
+            // Staged reverse: the X fades out completely *before* any geometry
+            // moves, so it's never visible at the same time as the returning icon.
+            state.animations.of(parentId).backIconAlpha.animateTo(0f, m.iconMorph)
+
+            // `path` must stay published until the wedges have actually finished
+            // shrinking, or they'd vanish mid-collapse instead of closing down to
+            // zero thickness.
+            val shrink = state.scope.launch { state.submenuReveal.animateTo(0f, m.submenuReveal) }
+            val expansion = state.animations.of(parentId).expansion
+            val startExpansion = expansion.value
+            val returnJob = state.scope.launch { expansion.animateTo(0f, m.close) }
+            // The original icon begins fading in during roughly the final
+            // quarter of the parent's return -- the mirror of beginOpen's X.
+            watchThenFade(expansion, startExpansion, 0f, state.animations.of(parentId).iconAlpha, 1f, m.iconMorph)
+            returnJob.join()
+            shrink.join()
+
             state.path = state.path.dropLast(1)
             state.phase = OneRingState.Phase.Settled
             onEvent?.invoke(OneRingEvent.MenuClosed(parentId))
             haptic(OneRingHapticEvent.MenuClosed)
             exitingSeekId?.let { onEvent?.invoke(OneRingEvent.SeekExited(it)) }
+        }
+    }
+
+    /**
+     * Starts [channel] fading toward [fadeTarget] once [progress] has covered
+     * roughly `1 - LATE_GLYPH_FADE_FRACTION` of the distance from [startValue]
+     * to [endValue] -- see [LATE_GLYPH_FADE_FRACTION]. Polls rather than
+     * reacting to a snapshot, since [Animatable] is a plain class, not
+     * snapshot-`State`-backed -- there's nothing to observe reactively.
+     */
+    private fun watchThenFade(
+        progress: Animatable<Float, *>,
+        startValue: Float,
+        endValue: Float,
+        channel: Animatable<Float, *>,
+        fadeTarget: Float,
+        fadeSpec: AnimationSpec<Float>,
+    ) {
+        val threshold = startValue + (endValue - startValue) * (1f - LATE_GLYPH_FADE_FRACTION)
+        val risingToward = endValue >= startValue
+        state.scope.launch {
+            while (if (risingToward) progress.value < threshold else progress.value > threshold) {
+                delay(GEOMETRY_POLL_MS)
+            }
+            channel.animateTo(fadeTarget, fadeSpec)
         }
     }
 
@@ -274,12 +416,26 @@ internal class RingInteractionController(private val state: OneRingState) {
 
         state.phase = OneRingState.Phase.Opening(item.id)
         items.asSequence().filter { it.id != item.id }.forEach { sibling ->
-            // Fade in place -- unlike opening a submenu, siblings don't collapse.
             state.scope.launch { state.animations.of(sibling.id).contentAlpha.animateTo(0f, m.siblingExit) }
         }
+        // Same collapse-toward-the-inner-edge language as opening a submenu,
+        // even though a main seek's track occupies the *same* band the
+        // siblings just vacated (buildSeekVisual always draws the full
+        // mainBand regardless of this value) -- the point is that the ring
+        // still reads as one continuous transform, not "seek appears, others
+        // just vanish".
+        state.scope.launch { state.mainSiblingReveal.animateTo(0f, m.select) }
+
+        // Same staged icon -> X change as a menu parent: glyph out first.
+        state.scope.launch { state.animations.of(item.id).iconAlpha.animateTo(0f, m.iconMorph) }
+
+        val expansion = state.animations.of(item.id).expansion
+        val startExpansion = expansion.value
+        val grow = state.scope.launch { expansion.animateTo(2f, m.select) }
+        watchThenFade(expansion, startExpansion, 2f, state.animations.of(item.id).backIconAlpha, 1f, m.iconMorph)
 
         state.scope.launch {
-            state.animations.of(item.id).expansion.animateTo(2f, m.select)
+            grow.join()
             val track = SeekTrack.build(anchor = anchorSpan)
             state.seekSession = OneRingState.SeekSession(itemId = item.id, track = track)
             state.phase = OneRingState.Phase.Settled
@@ -298,8 +454,18 @@ internal class RingInteractionController(private val state: OneRingState) {
         items.asSequence().filter { it.id != itemId }.forEach { sibling ->
             state.scope.launch { state.animations.of(sibling.id).contentAlpha.animateTo(1f, m.siblingExit) }
         }
+        state.scope.launch { state.mainSiblingReveal.animateTo(1f, m.close) }
+
         state.scope.launch {
-            state.animations.of(itemId).expansion.animateTo(0f, m.close)
+            // Staged reverse, exactly as beginClose: X out, then geometry, then
+            // the seek item's own glyph back in during the final part of the
+            // return -- see watchThenFade.
+            state.animations.of(itemId).backIconAlpha.animateTo(0f, m.iconMorph)
+            val expansion = state.animations.of(itemId).expansion
+            val startExpansion = expansion.value
+            val returnJob = state.scope.launch { expansion.animateTo(0f, m.close) }
+            watchThenFade(expansion, startExpansion, 0f, state.animations.of(itemId).iconAlpha, 1f, m.iconMorph)
+            returnJob.join()
             state.phase = OneRingState.Phase.Settled
             onEvent?.invoke(OneRingEvent.SeekExited(itemId))
             haptic(OneRingHapticEvent.SeekExited)
@@ -312,7 +478,7 @@ internal class RingInteractionController(private val state: OneRingState) {
         val d = dimensions ?: return
         val (_, children) = currentSubmenu(items, state.path) ?: return
         val parentSpan = parentSpanFor(parent.id, r) ?: return
-        val childSpans = submenuChildSpans(r, d, parentSpan, children.size)
+        val childSpans = submenuChildSpans(r, d, parentSpan, children)
         val index = children.indexOfFirst { it.id == item.id }
         val anchorSpan = childSpans.getOrNull(index) ?: return
 
@@ -450,10 +616,16 @@ internal class RingInteractionController(private val state: OneRingState) {
             // Input is gated to nothing but a fresh down while a transition is
             // in flight -- see docs/PLAN.md section 6.3.
             if (state.phase != OneRingState.Phase.Settled) return@awaitEachGesture
-            if (tryClosePress(down.position)) return@awaitEachGesture
 
             val session = state.seekSession
             if (session != null) {
+                // A press that starts on the back control tracks it as an
+                // ordinary wedge (highlight, scrub, release-to-close) instead of
+                // starting a seek drag. Anywhere else on the ring is the drag.
+                if (hitBackControl(down.position) != null) {
+                    trackGesture(down) { pos -> hitBackControl(pos) }
+                    return@awaitEachGesture
+                }
                 val item = findSeekItem(session.itemId) ?: return@awaitEachGesture
                 trackSeekGesture(down, session, item)
                 return@awaitEachGesture
@@ -469,8 +641,13 @@ internal class RingInteractionController(private val state: OneRingState) {
             val d = dimensions ?: return@awaitEachGesture
             val (parent, children) = currentSubmenu(items, state.path) ?: return@awaitEachGesture
             val parentSpan = parentSpanFor(parent.id, r) ?: return@awaitEachGesture
-            val childSpans = submenuChildSpans(r, d, parentSpan, children.size)
-            trackGesture(down) { pos -> hitTestSubmenu(pos, r, childSpans)?.let { children[it].id } }
+            val childSpans = submenuChildSpans(r, d, parentSpan, children)
+            // One hit function covering both bands, so scrubbing between the
+            // back control and a submenu child moves the highlight naturally and
+            // the commit target is decided purely by where the finger lifts.
+            trackGesture(down) { pos ->
+                hitBackControl(pos) ?: hitTestSubmenu(pos, r, childSpans)?.let { children[it].id }
+            }
         }
     }
 }

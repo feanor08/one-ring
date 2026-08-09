@@ -41,8 +41,16 @@ public data class AngularSpan(val startDeg: Float, val sweepDeg: Float) {
     public fun split(count: Int, gapDeg: Float = 0f): List<AngularSpan> {
         if (count <= 0) return emptyList()
         if (count == 1) return listOf(this)
-        val totalGap = gapDeg * (count - 1)
-        val itemSweep = ((sweepDeg - totalGap) / count).coerceAtLeast(0f)
-        return List(count) { i -> AngularSpan(startDeg + i * (itemSweep + gapDeg), itemSweep) }
+        return splitWeighted(List(count) { 1f }, gapDeg)
+    }
+
+    /**
+     * Divides this span in proportion to [weights] (relative, not percentages
+     * -- see [com.feanor08.onering.OneRingItem.weight]), separated by [gapDeg].
+     * Gaps are removed before proportioning so they never skew the ratios.
+     */
+    public fun splitWeighted(weights: List<Float>, gapDeg: Float = 0f): List<AngularSpan> {
+        if (weights.isEmpty()) return emptyList()
+        return weightedSpans(weights, startDeg, sweepDeg, gapDeg)
     }
 }

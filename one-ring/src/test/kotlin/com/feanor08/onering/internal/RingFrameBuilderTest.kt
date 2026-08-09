@@ -65,23 +65,50 @@ class RingFrameBuilderTest {
         assertEquals(resolved.centerRadiusPx, frame.centerCircle?.radiusPx)
     }
 
-    @Test fun `expansion above the hover threshold uses the highlighted color and a larger outer radius`() {
+    @Test fun `expansion drives the outer radius but never the accent colour`() {
         val list = items(6)
         val resolved = resolveRing(Size(600f, 600f), density, OneRingDefaults.dimensions(), list.size)
-        val frame = RingFrameBuilder.build(list, resolved, colors, expansionOf = { id ->
-            if (id ==
-                "item2"
-            ) {
-                2f
-            } else {
-                0f
-            }
-        })
-        val selected = frame.arcs.first { it.itemIndex == 2 }
-        assertEquals(colors.sectorHighlighted, selected.fill)
-        assertEquals(resolved.mainSelectedOuterPx, selected.band.outerPx, 0.01f)
+        // item2 is fully expanded (as an open menu's parent is while it acts as
+        // the back control) but nothing is under the pointer.
+        val frame = RingFrameBuilder.build(
+            list,
+            resolved,
+            colors,
+            expansionOf = { id -> if (id == "item2") 2f else 0f },
+            highlightedId = null,
+        )
+        val expanded = frame.arcs.first { it.itemIndex == 2 }
+        assertEquals(resolved.mainSelectedOuterPx, expanded.band.outerPx, 0.01f)
+        assertNotEquals(
+            "an expanded-but-unhovered wedge must not look selected",
+            colors.sectorHighlighted,
+            expanded.fill,
+        )
+        assertEquals(colors.stroke, expanded.stroke)
+
         val rest = frame.arcs.first { it.itemIndex == 0 }
         assertEquals(resolved.mainOuterPx, rest.band.outerPx, 0.01f)
+    }
+
+    @Test fun `the accent colour follows the pointer highlight, at any expansion`() {
+        val list = items(6)
+        val resolved = resolveRing(Size(600f, 600f), density, OneRingDefaults.dimensions(), list.size)
+        val frame = RingFrameBuilder.build(
+            list,
+            resolved,
+            colors,
+            expansionOf = { id -> if (id == "item2") 2f else 0f },
+            highlightedId = "item2",
+        )
+        val highlighted = frame.arcs.first { it.itemIndex == 2 }
+        assertEquals(colors.sectorHighlighted, highlighted.fill)
+        assertEquals(colors.strokeHighlighted, highlighted.stroke)
+
+        // A wedge at rest radius still highlights when it is the pointer target.
+        val restHighlighted = RingFrameBuilder
+            .build(list, resolved, colors, expansionOf = { 0f }, highlightedId = "item0")
+            .arcs.first { it.itemIndex == 0 }
+        assertEquals(colors.sectorHighlighted, restHighlighted.fill)
     }
 
     @Test fun `alphaOf drives per-arc opacity independently of expansion`() {

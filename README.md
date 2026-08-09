@@ -17,8 +17,9 @@ seek adjustment).
 ## Modules
 
 - **`:one-ring`** — the library (`com.feanor08.onering`).
-- **`:sample`** — a demo app exercising the library, including a preset
-  switcher (Default / Compact / Automotive / Game).
+- **`:sample`** — **One Ring Showcase**, a browsable catalog of capability
+  demos that doubles as the library's manual QA playground. See
+  [Sample / Showcase](#sample--showcase).
 
 ## Installing
 
@@ -63,6 +64,51 @@ OneRing(
 
 That's the whole API surface for the common case: a flat ring of actions,
 committed on release.
+
+## Weighted (asymmetrical) sectors
+
+By default every sector is equal. Give an item a `weight` to make it bigger or
+smaller relative to its siblings:
+
+```kotlin
+val items = listOf(
+    OneRingItem.Action(id = "primary",   label = "Primary",   weight = 2f),
+    OneRingItem.Action(id = "secondary", label = "Secondary", weight = 1f),
+    OneRingItem.Action(id = "third",     label = "Third",     weight = 1f),
+)
+// -> 180deg / 90deg / 90deg
+```
+
+Weights are **relative**, never percentages that must add up to anything, so
+`2 / 1 / 1` and `50 / 25 / 25` describe exactly the same ring. They're
+normalized against their siblings and then scaled to whatever sweep is actually
+available — a partial ring (`totalSweepDeg = 300f`) with weights `2 / 1 / 1`
+gives `150 / 75 / 75`.
+
+`weight` defaults to `1f`, so a ring that never mentions weights behaves
+exactly as it always did. It must be finite and positive; anything else throws
+at construction rather than producing a broken arc later.
+
+Nested children are weighted **independently of their parent** — the parent's
+weight decides its share of the main ring, and the children's weights divide
+the submenu's available sweep (the circle minus the parent's reserved gap):
+
+```kotlin
+oneRingItems {
+    menu(id = "media", label = "Media", weight = 2f) {   // half the main ring
+        action(id = "playPause", label = "Play / Pause", weight = 2f)
+        action(id = "previous",  label = "Previous")     // defaults to 1f
+        action(id = "next",      label = "Next")
+        seek(id = "volume", label = "Volume", weight = 2f, /* ... */)
+    }
+    menu(id = "climate", label = "Climate") { /* ... */ }
+    action(id = "navigation", label = "Navigation")
+}
+```
+
+Seek items honour their weight too, and the seek track is built from the
+selected wedge's *actual* span — a weight-2 seek excludes twice as much of the
+ring from its own progress track as a weight-1 one would.
 
 ## Nested menus
 
@@ -173,6 +219,40 @@ The default (`rememberDefaultOneRingHaptics()`) fires on highlight change,
 commit, reject, and menu/seek open/close, deduplicated so scrubbing within one
 wedge never fires continuously. Supply your own `OneRingHaptics` to route
 feedback elsewhere (e.g. an automotive HMI's vehicle-side haptics).
+
+## Sample / Showcase
+
+```bash
+./gradlew :sample:installDebug
+```
+
+The app opens on a list of demos; each one drives the **public** API only —
+no screen reimplements hit testing, geometry, seek mapping, or animation.
+
+| Screen | What it demonstrates |
+| --- | --- |
+| Basic | Press, scrub, highlight, hover growth, release-to-commit |
+| Nested | Submenu navigation; parents with 2–6 children; reserved parent gap |
+| Asymmetrical / Weighted | Weighted sectors (50/25/25, 40/30/20/10, 5/1/1/1/2, Equal) plus a live weight editor with normalized percentages |
+| Nested Growth | The submenu growing outer-edge inward at Slow/Default/Fast, on a weighted parent with weighted children and a weighted seek |
+| Seek | Main-ring and submenu seek; ranges (0–100, 16–30 °C, 1–5x, 0–300 s); step quantization; intro-hint toggle and overshoot |
+| Item Counts | 2/3/4/5/6/8/10/12 items — the geometry engine isn't hardcoded to six |
+| Geometry | Live sliders over every radius, start angle, sweep, gap, and thumb size |
+| Styling | Six colour presets plus live highlight overrides, all via `OneRingDefaults.colors()` |
+| Motion | Instant / Fast / Default / Slow motion presets |
+| Dynamic | Add / remove / shuffle / disable at runtime; hoisted seek state shared with a plain `Slider` |
+| Automotive | `automotiveStyle()`, a Climate submenu, temperature and fan seeks |
+| Game Wheel | An 8-item weapon wheel with `gameStyle()` and custom centre content |
+| Smart Home | A 5-child submenu with a brightness seek, and a custom `OneRingIcon.Content` wedge |
+| Media | Icons and labels that swap from app state; a media-position seek |
+| Stress Test | The animation-continuity regression check and a rapid-input torture test with a live state overlay |
+| Accessibility | Disabled items, the haptics toggle, and an honest account of what TalkBack can and can't do today |
+
+Most screens carry a collapsible **View usage** snippet with the minimal Kotlin
+for that configuration, and several carry an **Event log** showing the
+`OneRingEvent` firehose live.
+
+Manual QA checklist: [`sample/MANUAL_TESTING.md`](sample/MANUAL_TESTING.md).
 
 ## Publishing
 
