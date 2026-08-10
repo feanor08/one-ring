@@ -66,6 +66,13 @@ class ResolvedRingTest {
         assertTrue(totalSweep <= 360f && totalSweep > 350f) // slightly under 360 due to sectorGap
     }
 
+    @Test fun `coreOverlayRadius resolves as a fraction of base radius and stays inside mainInner`() {
+        val dimensions = OneRingDefaults.dimensions()
+        val resolved = resolveRing(Size(600f, 600f), density, dimensions, itemCount = 6)
+        assertEquals(resolved.baseRadiusPx * 0.43f, resolved.coreOverlayRadiusPx, EPS)
+        assertTrue(resolved.coreOverlayRadiusPx < resolved.mainInnerPx)
+    }
+
     @Test fun `mainOuterFor interpolates across rest, hover, and selected stops`() {
         val dimensions = OneRingDefaults.dimensions()
         val resolved = resolveRing(Size(600f, 600f), density, dimensions, itemCount = 6)

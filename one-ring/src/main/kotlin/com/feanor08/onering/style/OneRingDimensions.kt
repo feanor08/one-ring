@@ -20,6 +20,14 @@ public data class OneRingDimensions internal constructor(
     public val submenuOuter: RadialSize,
     public val submenuHoverOuter: RadialSize,
     public val centerRadius: RadialSize,
+    /**
+     * The radius of [com.feanor08.onering.OneRing]'s large `coreOverlay` slot
+     * (distinct from the small `center` slot, which uses [centerRadius]). Must
+     * stay smaller than [mainInner] so overlay content never overlaps the main
+     * ring; the default (0.43) leaves real clearance under every built-in
+     * preset, including [com.feanor08.onering.OneRingDefaults.compactStyle].
+     */
+    public val coreOverlayRadius: RadialSize,
     public val startAngleDeg: Float,
     public val totalSweepDeg: Float,
     public val sectorGap: Dp,

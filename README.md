@@ -152,6 +152,43 @@ hover instead, since the menu's own close wedge stays the exit control. Both
 variants: drag anywhere on the ring to adjust, release to commit the final
 value via `onValueChangeFinished`.
 
+## Notifications
+
+`OneRing`'s empty core can host a generic, scrollable notification feed via
+the `coreOverlay` slot (a new, larger sibling of the existing small `center`
+slot):
+
+```kotlin
+val ringState = rememberOneRingState()
+val notifications = rememberOneRingNotificationState()
+
+OneRing(
+    items = items,
+    state = ringState,
+    onAction = { /* ... */ },
+    coreOverlay = { OneRingNotificationHost(state = notifications) },
+)
+
+notifications.post(
+    OneRingNotificationPost(
+        threadKey = "chat:alex",
+        sourceKey = "messaging",
+        sourceLabel = "Messages",
+        title = "Alex",
+        message = "Running 5 minutes late.",
+        /* ... */
+    ),
+)
+```
+
+Same-`threadKey` posts accumulate into one card (`"Alex · 2 messages"`, not
+two cards); cards are grouped by `sourceKey`, each with its own accent color;
+the whole feed is one scrollable list; and it automatically hides while a
+submenu or seek is open, returning once the main ring settles. See
+[`docs/notifications.md`](docs/notifications.md) for the full behavior
+(same-thread grouping, source grouping, dismissal, the arrival animation,
+and the library-boundary rules that keep `:one-ring` Material-free).
+
 ## Customization
 
 Every visual and behavioral knob lives on `OneRingStyle`, built through

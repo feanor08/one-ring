@@ -196,6 +196,50 @@ Stress Test → *Rapid input*:
       and falls back to the equipped item on release.
 - [ ] The centre content never intercepts ring gestures.
 
+## Notifications
+
+- [ ] On opening the Notifications demo, after a brief pause the Adarsh
+      notification arrives: a fully opaque circle grows from the center,
+      shows only a large green message icon (nothing behind it is visible
+      through it), holds briefly, then fades away to reveal the Adarsh card.
+- [ ] Tap "Adarsh +1" repeatedly: the messages accumulate into the **same**
+      card (`WhatsApp · N messages`), never a second card. The card grows
+      taller as messages accumulate rather than getting its own scrollbar.
+- [ ] Tap "WhatsApp · Varsha" and "WhatsApp · Family": all three land in one
+      "WhatsApp" source group, reachable in order by scrolling the single feed.
+- [ ] Tap each of Software Update / Tyre Pressure / Service Reminder / Cloud
+      Notification / Battery Alert: each gets its own source group with its
+      own accent color (border/icon/subtitle), and scrolling the feed reaches
+      every group in most-recently-updated-first order.
+- [ ] Cards narrow and dim slightly as they scroll toward the top/bottom edge
+      of the circular viewport; scrolling stays smooth throughout (no jitter).
+- [ ] Tap a card's X: that card disappears; everything else is unaffected. If
+      it was the last card in its source, that source's header disappears too.
+- [ ] Swipe a card left past roughly a third of its width: it dismisses.
+      Swiping left a shorter distance springs it back. Swiping *right* never
+      dismisses. A mostly-vertical drag scrolls the feed instead of dragging
+      the card sideways.
+- [ ] Open Music (or the main Volume seek): the feed fades out and stays
+      hidden for the whole time the submenu/seek is open, including while
+      scrubbing between children.
+- [ ] Close Music (via the X) / exit the seek: the feed only fades back in
+      *after* the main ring has fully finished animating back — not before,
+      not mid-collapse. Scroll position and every card are exactly as left.
+- [ ] While Music is open, trigger another notification button off-screen (or
+      via "Adarsh +1"): no arrival circle appears behind the submenu. Closing
+      the submenu shows the updated card directly, with no stale arrival
+      animation replaying.
+- [ ] "Clear All" empties the whole feed (all groups gone); "Reset Demo" also
+      resets the Adarsh follow-up script back to its first line.
+- [ ] Enable TalkBack: each card announces title, subtitle, and every message
+      as one node; the X announces "Dismiss <title> notification" and has a
+      working custom dismiss action; source headers read as headings; a new
+      arrival announces "New notification: <title>" once, without re-reading
+      every other card.
+- [ ] System Settings → "Remove animations": the arrival sequence is skipped
+      (the card just appears) and the hide/show fade snaps instead of easing;
+      swipe-to-dismiss still works.
+
 ## Haptics
 
 - [ ] With haptics ON: one tick per wedge crossing, a distinct commit pulse, a

@@ -36,4 +36,25 @@ class OneRingDefaultsPresetsTest {
         val automotive = OneRingDefaults.automotiveStyle().dimensions
         assertTrue(automotive.touchSlopRadial > default.touchSlopRadial)
     }
+
+    private fun assertCoreOverlayFitsInsideMainRing(style: com.feanor08.onering.style.OneRingStyle) {
+        val resolved = resolveRing(Size(600f, 600f), density, style.dimensions, itemCount = 6)
+        assertTrue(
+            "coreOverlayRadiusPx (${resolved.coreOverlayRadiusPx}) must stay smaller than " +
+                "mainInnerPx (${resolved.mainInnerPx}) so overlay content never overlaps the main ring",
+            resolved.coreOverlayRadiusPx < resolved.mainInnerPx,
+        )
+    }
+
+    @Test fun `default style's coreOverlay fits inside the main ring`() =
+        assertCoreOverlayFitsInsideMainRing(OneRingDefaults.style())
+
+    @Test fun `compactStyle's coreOverlay fits inside the main ring`() =
+        assertCoreOverlayFitsInsideMainRing(OneRingDefaults.compactStyle())
+
+    @Test fun `automotiveStyle's coreOverlay fits inside the main ring`() =
+        assertCoreOverlayFitsInsideMainRing(OneRingDefaults.automotiveStyle())
+
+    @Test fun `gameStyle's coreOverlay fits inside the main ring`() =
+        assertCoreOverlayFitsInsideMainRing(OneRingDefaults.gameStyle())
 }

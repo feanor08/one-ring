@@ -28,6 +28,7 @@ import com.feanor08.onering.internal.lerp
 import com.feanor08.onering.internal.rememberAnimationsEnabled
 import com.feanor08.onering.internal.resolveRing
 import com.feanor08.onering.internal.submenuChildSpans
+import com.feanor08.onering.internal.warnIfCoreOverlayOverlapsMainRing
 import com.feanor08.onering.internal.warnIfTargetsTooSmall
 import com.feanor08.onering.style.OneRingStyle
 
@@ -66,7 +67,20 @@ import com.feanor08.onering.style.OneRingStyle
  * @param onEvent an optional firehose for navigation events (highlight change,
  *   commit, open, close, seek enter/exit) beyond what [onAction] alone covers
  *   -- most consumers don't need this.
- * @param center optional content rendered in the ring's empty core.
+ * @param center optional content rendered in the ring's empty core, sized by
+ *   [com.feanor08.onering.style.OneRingDimensions.centerRadius]. Unchanged by
+ *   [coreOverlay]'s existence -- the two slots are independent and both
+ *   optional.
+ * @param coreOverlay optional, substantially larger content rendered in the
+ *   ring's core, sized by
+ *   [com.feanor08.onering.style.OneRingDimensions.coreOverlayRadius] --
+ *   intended for content like [com.feanor08.onering.notification.OneRingNotificationHost]
+ *   that needs real space rather than [center]'s small footprint. Drawn above
+ *   [center] when both are supplied. Pointer input starting inside this slot's
+ *   circular footprint is never claimed by the ring itself (only while the
+ *   ring is at its top level and settled -- see docs/notifications.md), so the
+ *   overlay's own scrolling/dragging works without fighting the ring's gesture
+ *   loop.
  */
 @Composable
 public fun OneRing(
@@ -78,6 +92,7 @@ public fun OneRing(
     haptics: OneRingHaptics = rememberDefaultOneRingHaptics(),
     onEvent: ((OneRingEvent) -> Unit)? = null,
     center: (@Composable OneRingCenterScope.() -> Unit)? = null,
+    coreOverlay: (@Composable OneRingCenterScope.() -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val pathPool = remember { RingPathPool() }
@@ -96,10 +111,18 @@ public fun OneRing(
 
         val resolved = resolveRing(sizePx, density, style.dimensions, items.map { it.weight })
         val motion = effectiveMotion(style.motion, animationsEnabled)
-        controller.update(items, resolved, style.dimensions, motion, style.behavior, haptics, onAction, onEvent)
+        controller.update(
+            items, resolved, style.dimensions, motion, style.behavior, haptics, onAction, onEvent,
+            hasCoreOverlay = coreOverlay != null,
+        )
 
         LaunchedEffect(items.size, resolved) {
             warnIfTargetsTooSmall(resolved, items.size, minTouchPx = with(density) { 48.dp.toPx() })
+        }
+        if (coreOverlay != null) {
+            LaunchedEffect(resolved) {
+                warnIfCoreOverlayOverlapsMainRing(resolved)
+            }
         }
 
         val expansionOf = { itemId: String -> state.animations.of(itemId).expansion.value }
@@ -273,15 +296,34 @@ public fun OneRing(
             }
         }
 
+        val centerScope = remember(state.path, state.highlightedId, state.mode) {
+            OneRingCenterScope(
+                currentMenuId = state.path.lastOrNull(),
+                highlightedId = state.highlightedId,
+                mode = state.mode,
+            )
+        }
+
         if (center != null) {
             val centerDiameterDp = with(density) { (resolved.centerRadiusPx * 2).toDp() }
-            val scope = remember(state.path, state.highlightedId) {
-                OneRingCenterScope(currentMenuId = state.path.lastOrNull(), highlightedId = state.highlightedId)
-            }
             Box(
                 modifier = Modifier.align(Alignment.Center).size(centerDiameterDp),
             ) {
-                scope.center()
+                centerScope.center()
+            }
+        }
+
+        // Drawn above `center` (and the ring's own content/semantics layers,
+        // declared earlier) so it sits on top -- consistent with coreOverlay
+        // being the intended surface for real interactive content like a
+        // notification feed. See isInsideActiveCoreOverlay's doc comment for
+        // how the ring's own gesture loop cedes this region.
+        if (coreOverlay != null) {
+            val coreOverlayDiameterDp = with(density) { (resolved.coreOverlayRadiusPx * 2).toDp() }
+            Box(
+                modifier = Modifier.align(Alignment.Center).size(coreOverlayDiameterDp),
+            ) {
+                centerScope.coreOverlay()
             }
         }
     }

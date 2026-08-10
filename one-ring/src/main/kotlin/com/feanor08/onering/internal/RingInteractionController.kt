@@ -73,6 +73,7 @@ internal class RingInteractionController(private val state: OneRingState) {
     private var haptics: OneRingHaptics = OneRingHaptics.None
     private var onAction: (OneRingItem.Action) -> Unit = {}
     private var onEvent: ((OneRingEvent) -> Unit)? = null
+    private var hasCoreOverlay: Boolean = false
 
     fun update(
         items: List<OneRingItem>,
@@ -83,6 +84,7 @@ internal class RingInteractionController(private val state: OneRingState) {
         haptics: OneRingHaptics,
         onAction: (OneRingItem.Action) -> Unit,
         onEvent: ((OneRingEvent) -> Unit)?,
+        hasCoreOverlay: Boolean = false,
     ) {
         this.items = items
         this.resolved = resolved
@@ -92,6 +94,7 @@ internal class RingInteractionController(private val state: OneRingState) {
         this.haptics = haptics
         this.onAction = onAction
         this.onEvent = onEvent
+        this.hasCoreOverlay = hasCoreOverlay
     }
 
     private fun haptic(event: OneRingHapticEvent) {
@@ -608,9 +611,40 @@ internal class RingInteractionController(private val state: OneRingState) {
         }
     }
 
+    /**
+     * True when [position] falls inside the `coreOverlay` slot's circular
+     * footprint *and* that content is actually the interactive surface right
+     * now (top-level, settled -- exactly [OneRingState.mode] Idle/Tracking,
+     * the only modes `coreOverlay` content is visible in; see
+     * docs/notifications.md). Submenu/seek bands can legitimately reach this
+     * far in toward the center (e.g. `submenuInnerPx` sits below the default
+     * `coreOverlayRadius`), so this must never gate those modes -- only the
+     * empty core that has nothing else to hit-test against.
+     */
+    /** Test hook for [isInsideActiveCoreOverlay], otherwise only reachable through a pointer gesture. */
+    internal fun isInsideActiveCoreOverlayForTest(position: Offset): Boolean = isInsideActiveCoreOverlay(position)
+
+    private fun isInsideActiveCoreOverlay(position: Offset): Boolean {
+        if (!hasCoreOverlay) return false
+        if (state.phase != OneRingState.Phase.Settled) return false
+        if (state.path.isNotEmpty() || state.seekSession != null) return false
+        val r = resolved ?: return false
+        val dx = position.x - r.centerPx.x
+        val dy = position.y - r.centerPx.y
+        return hypot(dx, dy) < r.coreOverlayRadiusPx
+    }
+
     suspend fun handleGestures(scope: PointerInputScope) = with(scope) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
+
+            // A down that lands inside an active coreOverlay's circle belongs
+            // entirely to that content (e.g. a notification feed's scroll/swipe)
+            // -- the ring must not consume it, or Foundation's scrollable/drag
+            // detectors underneath would see it as already claimed and back off.
+            // See RingInteractionController class doc / docs/notifications.md.
+            if (isInsideActiveCoreOverlay(down.position)) return@awaitEachGesture
+
             down.consume()
 
             // Input is gated to nothing but a fresh down while a transition is

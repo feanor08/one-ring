@@ -13,6 +13,10 @@ enum class Demo(val title: String, val summary: String) {
         "The submenu growing outer-edge inward, on a weighted parent with weighted children and a seek.",
     ),
     Seek("Seek", "Radial sliders on the main ring and inside a submenu, with arbitrary ranges and steps."),
+    Notifications(
+        "Notifications",
+        "Center notification feed, source grouping, arrival animation, scrolling and dismiss gestures.",
+    ),
     ItemCounts("Item Counts", "The geometry engine at 2 through 12 items -- proving it isn't hardcoded to six."),
     Geometry("Geometry", "Live sliders over every radius, angle, and spacing knob."),
     Styling("Styling", "Color presets and individual color overrides, all through the public style API."),

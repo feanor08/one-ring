@@ -48,6 +48,24 @@ There is no `0.1.0` tag/release yet.
 
 ### Added
 
+- **A generic notification feed for `OneRing`'s empty core.** New `coreOverlay`
+  slot on `OneRing` (a larger, independent sibling of the existing `center`
+  slot, sized by the new `OneRingDimensions.coreOverlayRadius`), and a new
+  `com.feanor08.onering.notification` package: `OneRingNotificationState` /
+  `rememberOneRingNotificationState()`, `OneRingNotificationPost`,
+  `OneRingNotificationHost`, `OneRingNotificationStyle` /
+  `OneRingNotificationDefaults`. Same-`threadKey` posts merge into one card;
+  cards group by `sourceKey` with independent accent colors; the whole feed is
+  one scrollable list (no per-card scroll containers); cards support X-dismiss
+  and swipe-left-to-dismiss with a directional lock against vertical scroll;
+  the feed automatically hides while a submenu/seek is open (via a new
+  `OneRingCenterScope.mode: OneRingMode`) and returns once the ring settles,
+  without ever clearing notification data while hidden; a new post arriving
+  while visible plays a brief, fully opaque icon-first arrival animation. Adds
+  no Material dependency to `:one-ring`. See
+  [`docs/notifications.md`](docs/notifications.md). Existing `OneRing` call
+  sites, the existing `center` slot, and every prior interaction/animation
+  behavior are unchanged.
 - **Weighted (asymmetrical) sectors.** `OneRingItem.weight` (default `1f`)
   sizes a wedge relative to its siblings: `2 / 1 / 1` and `50 / 25 / 25` both
   give the first item half the ring. Weights are normalized against their

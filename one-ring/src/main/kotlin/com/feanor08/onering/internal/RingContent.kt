@@ -1,7 +1,6 @@
 package com.feanor08.onering.internal
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
@@ -12,9 +11,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
@@ -94,7 +91,7 @@ internal fun RingContentLayer(
 
         if (iconAlpha > 0.01f) {
             GlyphLayer(topLeftDp, iconSize, iconAlpha, scale) {
-                RenderIcon(icon = item.icon, tint = tint)
+                RenderIcon(icon = item.icon, tint = tint, size = MaxIconSize)
             }
         }
         if (backAlpha > 0.01f) {
@@ -104,7 +101,7 @@ internal fun RingContentLayer(
                 else -> null
             }
             GlyphLayer(topLeftDp, iconSize, backAlpha, scale) {
-                if (closeIcon != null) RenderIcon(icon = closeIcon, tint = tint) else CloseGlyph(tint = tint)
+                if (closeIcon != null) RenderIcon(icon = closeIcon, tint = tint, size = MaxIconSize) else CloseGlyph(tint = tint)
             }
         }
     }
@@ -128,26 +125,6 @@ private fun GlyphLayer(
         contentAlignment = Alignment.Center,
     ) {
         content()
-    }
-}
-
-@Composable
-private fun RenderIcon(icon: OneRingIcon, tint: Color) {
-    when (icon) {
-        is OneRingIcon.None -> Unit
-        is OneRingIcon.Vector -> Image(
-            painter = rememberVectorPainter(icon.imageVector),
-            contentDescription = null,
-            modifier = Modifier.size(MaxIconSize),
-            colorFilter = ColorFilter.tint(icon.tint ?: tint),
-        )
-        is OneRingIcon.Painted -> Image(
-            painter = icon.painter,
-            contentDescription = null,
-            modifier = Modifier.size(MaxIconSize),
-            colorFilter = ColorFilter.tint(icon.tint ?: tint),
-        )
-        is OneRingIcon.Content -> icon.content()
     }
 }
 

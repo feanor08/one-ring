@@ -111,6 +111,38 @@ class ShowcaseSmokeTest {
     }
 
     @Test
+    fun notificationDemoPostingEveryButtonDoesNotCrashAndAdarshMessagesAccumulate() {
+        launch()
+        openDemo(Demo.Notifications)
+        // The initial delayed post has time to land.
+        rule.waitForIdle()
+
+        rule.onNodeWithText("WhatsApp · Adarsh").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Adarsh +1").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("WhatsApp · Varsha").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("WhatsApp · Family").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Software Update").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Tyre Pressure").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Service Reminder").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Cloud Notification").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Battery Alert").performScrollTo().performClick()
+        rule.waitForIdle()
+
+        rule.onNodeWithText("Clear All").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Reset Demo").performScrollTo().performClick()
+        rule.waitForIdle()
+    }
+
+    @Test
     fun accessibilityDemoExposesDisabledItemsToSemantics() {
         launch()
         openDemo(Demo.Accessibility)

@@ -5,6 +5,7 @@ import kotlin.math.PI
 
 private const val TAG = "OneRing"
 private var warnedForItemCount = -1
+private var warnedForOverlayOverlap = false
 
 /**
  * Logs a one-time warning (per distinct item count) when a main wedge's arc
@@ -25,4 +26,20 @@ internal fun warnIfTargetsTooSmall(resolved: ResolvedRing, itemCount: Int, minTo
                 "a larger ring, or OneRingDimensions.maxSubmenuItemSweepDeg-style tuning.",
         )
     }
+}
+
+/**
+ * Logs a one-time warning if `coreOverlayRadius` is configured large enough to
+ * overlap the main ring's inner edge -- e.g. via [OneRingDimensions] sliders
+ * (see the Geometry showcase demo) rather than the built-in presets, which
+ * always leave clearance. Diagnostic only; never blocks rendering.
+ */
+internal fun warnIfCoreOverlayOverlapsMainRing(resolved: ResolvedRing) {
+    if (warnedForOverlayOverlap || resolved.coreOverlayRadiusPx < resolved.mainInnerPx) return
+    warnedForOverlayOverlap = true
+    Log.w(
+        TAG,
+        "OneRingDimensions.coreOverlayRadius (~${resolved.coreOverlayRadiusPx.toInt()}px) is not smaller than " +
+            "mainInner (~${resolved.mainInnerPx.toInt()}px) -- coreOverlay content will overlap the main ring.",
+    )
 }
