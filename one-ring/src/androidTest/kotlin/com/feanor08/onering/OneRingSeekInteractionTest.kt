@@ -2,14 +2,12 @@ package com.feanor08.onering
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.feanor08.onering.geometry.AngularSpan
 import com.feanor08.onering.geometry.SubmenuLayout
-import com.feanor08.onering.geometry.polarOffset
 import org.junit.Rule
 import org.junit.Test
 
@@ -19,13 +17,6 @@ class OneRingSeekInteractionTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private fun pointInWedge(index: Int, count: Int, sizeDp: Int, radiusFraction: Float = 0.7f): Offset {
-        val sweep = 360f / count
-        val midDeg = -sweep / 2f + index * sweep
-        val offset = polarOffset(sizeDp * radiusFraction, midDeg)
-        return Offset(sizeDp / 2f + offset.x, sizeDp / 2f + offset.y)
-    }
-
     @Test fun committingAMainSeekItemEntersSeekModeAndDraggingUpdatesTheValue() {
         var value = 0.1f
         val seekItems = listOf(
@@ -33,17 +24,15 @@ class OneRingSeekInteractionTest {
             OneRingItem.Action(id = "b", label = "B"),
             OneRingItem.Action(id = "c", label = "C"),
         )
-        val sizeDp = 300
         lateinit var state: OneRingState
 
         composeRule.setContent {
             state = rememberOneRingState()
-            OneRing(items = seekItems, onAction = {}, state = state, modifier = Modifier.size(sizeDp.dp))
+            OneRing(items = seekItems, onAction = {}, state = state, modifier = Modifier.size(300.dp))
         }
 
-        val point = pointInWedge(index = 0, count = seekItems.size, sizeDp = sizeDp)
         composeRule.onRoot().performTouchInput {
-            down(point)
+            down(pointInWedge(index = 0, count = seekItems.size))
             up()
         }
         composeRule.waitForIdle()
@@ -52,11 +41,8 @@ class OneRingSeekInteractionTest {
         // Drag to the far side of the ring, well inside the seek track (the
         // wedge's own excluded region is only 120deg wide, centered on its
         // own midpoint -- 180deg away is always free track).
-        val farSide = pointInWedge(index = 0, count = seekItems.size, sizeDp = sizeDp).let {
-            val opposite = polarOffset(sizeDp * 0.7f, 180f)
-            Offset(sizeDp / 2f + opposite.x, sizeDp / 2f + opposite.y)
-        }
         composeRule.onRoot().performTouchInput {
+            val farSide = pointAtPolar(0.7f, 180f)
             down(farSide)
             moveTo(farSide)
         }
@@ -72,17 +58,15 @@ class OneRingSeekInteractionTest {
             OneRingItem.Seek(id = "vol", label = "Volume", value = 0.5f, onValueChange = {}),
             OneRingItem.Action(id = "b", label = "B"),
         )
-        val sizeDp = 300
         lateinit var state: OneRingState
 
         composeRule.setContent {
             state = rememberOneRingState()
-            OneRing(items = seekItems, onAction = {}, state = state, modifier = Modifier.size(sizeDp.dp))
+            OneRing(items = seekItems, onAction = {}, state = state, modifier = Modifier.size(300.dp))
         }
 
-        val point = pointInWedge(index = 0, count = seekItems.size, sizeDp = sizeDp)
         composeRule.onRoot().performTouchInput {
-            down(point)
+            down(pointInWedge(index = 0, count = seekItems.size))
             up()
         }
         composeRule.waitForIdle()
@@ -91,7 +75,7 @@ class OneRingSeekInteractionTest {
         // The seek item grew to the selected radius and is now the close
         // control, exactly like a Menu -- pressing the same point exits.
         composeRule.onRoot().performTouchInput {
-            down(point)
+            down(pointInWedge(index = 0, count = seekItems.size))
             up()
         }
         composeRule.waitForIdle()
@@ -113,17 +97,15 @@ class OneRingSeekInteractionTest {
             OneRingItem.Action(id = "b", label = "B"),
             OneRingItem.Action(id = "c", label = "C"),
         )
-        val sizeDp = 300
         lateinit var state: OneRingState
 
         composeRule.setContent {
             state = rememberOneRingState()
-            OneRing(items = menuItems, onAction = {}, state = state, modifier = Modifier.size(sizeDp.dp))
+            OneRing(items = menuItems, onAction = {}, state = state, modifier = Modifier.size(300.dp))
         }
 
-        val parentPoint = pointInWedge(index = 0, count = menuItems.size, sizeDp = sizeDp)
         composeRule.onRoot().performTouchInput {
-            down(parentPoint)
+            down(pointInWedge(index = 0, count = menuItems.size))
             up()
         }
         composeRule.waitForIdle()
@@ -143,11 +125,9 @@ class OneRingSeekInteractionTest {
         )
         val childMidDeg = childSpans[2].midDeg // index 2 = "vol"
         val submenuMidRadiusFraction = (0.280f + 0.512f) / 2f
-        val offset = polarOffset(sizeDp * submenuMidRadiusFraction, childMidDeg)
-        val childPoint = Offset(sizeDp / 2f + offset.x, sizeDp / 2f + offset.y)
 
         composeRule.onRoot().performTouchInput {
-            down(childPoint)
+            down(pointAtPolar(submenuMidRadiusFraction, childMidDeg))
             up()
         }
         composeRule.waitForIdle()
@@ -157,7 +137,7 @@ class OneRingSeekInteractionTest {
 
         // The parent wedge never changed roles -- pressing it exits all the way.
         composeRule.onRoot().performTouchInput {
-            down(parentPoint)
+            down(pointInWedge(index = 0, count = menuItems.size))
             up()
         }
         composeRule.waitForIdle()

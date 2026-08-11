@@ -101,13 +101,21 @@ internal class RingInteractionController(private val state: OneRingState) {
         if (behavior?.hapticsEnabled == true) haptics.perform(event)
     }
 
-    /** Internal rather than private so transition tests can start a real hover before committing. */
-    internal fun setHighlight(id: String?) {
+    /**
+     * Internal rather than private so transition tests can start a real hover
+     * before committing. [mute] skips the [OneRingHapticEvent.HighlightChanged]
+     * buzz (state still updates and [onEvent] still fires) -- used when
+     * clearing highlight as part of a commit, which already gets its own
+     * distinct [OneRingHapticEvent.Committed]/[OneRingHapticEvent.Rejected]
+     * buzz immediately after; without [mute] that reads as one double-buzz
+     * for a single release instead of one clean confirmation.
+     */
+    internal fun setHighlight(id: String?, mute: Boolean = false) {
         if (state.highlightedId == id) return
         val previous = state.highlightedId
         state.highlightedId = id
         onEvent?.invoke(OneRingEvent.HighlightChanged(id))
-        haptic(OneRingHapticEvent.HighlightChanged)
+        if (!mute) haptic(OneRingHapticEvent.HighlightChanged)
         val hoverSpec = motion?.hover ?: return
 
         // The current back control already sits at its expanded geometry; hover
@@ -214,7 +222,7 @@ internal class RingInteractionController(private val state: OneRingState) {
      */
     private fun commit() {
         val id = state.highlightedId ?: return
-        setHighlight(null)
+        setHighlight(null, mute = true)
         val session = state.seekSession
         when {
             state.path.isNotEmpty() && id == state.path.last() -> beginClose(id)

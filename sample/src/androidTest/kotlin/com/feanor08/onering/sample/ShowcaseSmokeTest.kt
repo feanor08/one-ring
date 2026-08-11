@@ -1,10 +1,16 @@
 package com.feanor08.onering.sample
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import com.feanor08.onering.sample.theme.OneRingSampleTheme
 import com.feanor08.onering.sample.ui.Demo
 import com.feanor08.onering.sample.ui.ShowcaseApp
@@ -26,8 +32,21 @@ class ShowcaseSmokeTest {
         rule.setContent { OneRingSampleTheme { ShowcaseApp() } }
     }
 
+    /**
+     * The showcase home list is a `LazyColumn` (see `ShowcaseApp.kt`), which
+     * `performScrollTo()` -- a `Modifier.verticalScroll`-oriented action that
+     * incrementally nudges the nearest scrollable ancestor -- cannot reach
+     * reliably once there are many off-screen, unmeasured items below the
+     * viewport (this was a real, previously-undiagnosed defect: on a real
+     * device, `performScrollTo()` on the home list reliably failed to reach
+     * far-down entries like "Accessibility" or "Motion"). `performScrollToNode`
+     * uses the lazy list's own semantics-exposed scroll-to-index action to
+     * jump directly to the target item regardless of list length or how far
+     * down it is -- the correct, deterministic tool for a `LazyColumn`.
+     */
     private fun openDemo(demo: Demo) {
-        rule.onNodeWithText(demo.title).performScrollTo().performClick()
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText(demo.title))
+        rule.onNodeWithText(demo.title).performClick()
         rule.waitForIdle()
     }
 
@@ -80,8 +99,18 @@ class ShowcaseSmokeTest {
     fun switchingEveryColorPresetDoesNotCrash() {
         launch()
         openDemo(Demo.Styling)
+        // The preset chips live in their own LazyRow (see StylingDemo.kt),
+        // nested inside DemoScaffold's own outer vertical scroll -- so
+        // hasScrollAction() alone matches two nodes here, unlike openDemo's
+        // single home list. This matcher picks the *horizontally* scrollable
+        // one specifically, then uses the same performScrollToNode reasoning:
+        // a plain performClick() can't find a chip Compose hasn't measured yet.
+        val chipRow = SemanticsMatcher("is a horizontally scrollable row") {
+            it.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange) != null
+        }
         listOf("Light", "Automotive", "Cyberpunk", "Minimal Monochrome", "High Contrast", "Default Dark")
             .forEach { preset ->
+                rule.onNode(chipRow).performScrollToNode(hasText(preset))
                 rule.onNodeWithText(preset).performClick()
                 rule.waitForIdle()
             }

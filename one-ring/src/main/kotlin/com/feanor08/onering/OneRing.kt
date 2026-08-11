@@ -76,11 +76,21 @@ import com.feanor08.onering.style.OneRingStyle
  *   [com.feanor08.onering.style.OneRingDimensions.coreOverlayRadius] --
  *   intended for content like [com.feanor08.onering.notification.OneRingNotificationHost]
  *   that needs real space rather than [center]'s small footprint. Drawn above
- *   [center] when both are supplied. Pointer input starting inside this slot's
- *   circular footprint is never claimed by the ring itself (only while the
- *   ring is at its top level and settled -- see docs/notifications.md), so the
- *   overlay's own scrolling/dragging works without fighting the ring's gesture
- *   loop.
+ *   [center] when both are supplied. The ring itself never claims pointer
+ *   input starting inside this slot's circular footprint while it's at its
+ *   own top level and settled (see [com.feanor08.onering.internal.RingInteractionController]'s
+ *   `isInsideActiveCoreOverlay`) -- that half keeps the ring out of the
+ *   overlay's way. The other half is the overlay's own responsibility: this
+ *   slot has no built-in mechanism that stops its content from intercepting a
+ *   submenu/seek gesture meant for the ring underneath it, so any interactive
+ *   `coreOverlay` content must gate its own `pointerInput`/scroll/drag
+ *   handlers off while [OneRingCenterScope.mode] isn't
+ *   [OneRingMode.Idle]/[OneRingMode.Tracking] -- ideally by not composing
+ *   those handlers at all (rather than consuming events), so there's nothing
+ *   left for hit-testing to find. [com.feanor08.onering.notification.OneRingNotificationHost]
+ *   demonstrates this pattern; see its "coreOverlay interactivity" doc for
+ *   why composition-level gating, not event consumption, is the right tool
+ *   here.
  */
 @Composable
 public fun OneRing(
@@ -317,7 +327,11 @@ public fun OneRing(
         // declared earlier) so it sits on top -- consistent with coreOverlay
         // being the intended surface for real interactive content like a
         // notification feed. See isInsideActiveCoreOverlay's doc comment for
-        // how the ring's own gesture loop cedes this region.
+        // how the ring's own gesture loop cedes this region while it's
+        // interactive, and this composable's `coreOverlay` param doc for the
+        // other half: the ring makes NO attempt to intercept or gate
+        // coreOverlay's own content -- that's the content's responsibility,
+        // using `centerScope.mode`.
         if (coreOverlay != null) {
             val coreOverlayDiameterDp = with(density) { (resolved.coreOverlayRadiusPx * 2).toDp() }
             Box(

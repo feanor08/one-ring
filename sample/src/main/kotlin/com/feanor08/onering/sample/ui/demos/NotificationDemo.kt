@@ -2,8 +2,10 @@ package com.feanor08.onering.sample.ui.demos
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,11 +31,15 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.feanor08.onering.OneRing
 import com.feanor08.onering.OneRingDefaults
 import com.feanor08.onering.OneRingIcon
+import com.feanor08.onering.notification.OneRingNotificationDefaults
 import com.feanor08.onering.notification.OneRingNotificationHost
 import com.feanor08.onering.notification.rememberOneRingNotificationState
 import com.feanor08.onering.oneRingItems
@@ -42,6 +48,11 @@ import com.feanor08.onering.sample.ui.Demo
 import com.feanor08.onering.sample.ui.components.CodeExampleCard
 import com.feanor08.onering.sample.ui.components.DemoScaffold
 import kotlinx.coroutines.delay
+
+/** The ring should visually dominate the demo -- as large as the viewport allows, within this range. */
+private val PreferredRingSize = 460.dp
+private val MinRingSize = 300.dp
+private val RingHorizontalMargin = 24.dp
 
 /**
  * The center `coreOverlay` slot hosting a live notification feed alongside a
@@ -94,6 +105,23 @@ fun NotificationDemo(onBack: () -> Unit) {
         }
     }
 
+    // The ring's own core must stay transparent -- notifications float
+    // directly over this screen's (light) background, never over a solid
+    // disc. `center` (the small, separate slot) is unused by this demo, but
+    // its default fill would otherwise still peek through the middle of the
+    // much larger, otherwise-transparent coreOverlay whenever it has no
+    // content of its own to draw (e.g. no notifications yet, or between
+    // cards) -- so it's turned off here explicitly.
+    val ringStyle = remember {
+        OneRingDefaults.style(colors = OneRingDefaults.colors(center = Color.Transparent))
+    }
+    // The demo's own background is light, so the feed uses the library's
+    // light neutral palette; each notification's own accentColor (set in
+    // NotificationDemoData) still drives its border/icon/subtitle either way.
+    val notificationStyle = remember {
+        OneRingNotificationDefaults.style(colors = OneRingNotificationDefaults.lightColors())
+    }
+
     DemoScaffold(
         title = Demo.Notifications.title,
         subtitle = "The feed lives in the ring's empty core (coreOverlay). Open Music or the Volume seek " +
@@ -101,14 +129,20 @@ fun NotificationDemo(onBack: () -> Unit) {
             "read older notifications; swipe a card left, or tap its X, to dismiss it.",
         onBack = onBack,
     ) {
-        OneRing(
-            items = items,
-            onAction = { lastAction = it.label },
-            state = ringState,
-            style = OneRingDefaults.style(),
-            modifier = Modifier.padding(vertical = 20.dp).size(340.dp),
-            coreOverlay = { OneRingNotificationHost(state = notifications) },
-        )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val available: Dp = maxWidth - RingHorizontalMargin * 2
+            // Never exceeds the available width (would clip); MinRingSize is
+            // only a floor when there's room for it, never forced past `available`.
+            val ringSize = available.coerceAtMost(PreferredRingSize).coerceAtLeast(minOf(MinRingSize, available))
+            OneRing(
+                items = items,
+                onAction = { lastAction = it.label },
+                state = ringState,
+                style = ringStyle,
+                modifier = Modifier.padding(vertical = 20.dp).size(ringSize),
+                coreOverlay = { OneRingNotificationHost(state = notifications, style = notificationStyle) },
+            )
+        }
         Text("mode: ${ringState.mode}  ·  last action: ${lastAction ?: "(none yet)"}")
 
         Spacer(Modifier.height(16.dp))

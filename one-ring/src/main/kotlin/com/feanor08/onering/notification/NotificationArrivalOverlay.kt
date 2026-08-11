@@ -41,12 +41,24 @@ private val ArrivalIconSize = 56.dp
  * composable ever touches the outer alpha before the exit phase, so the feed
  * underneath cannot show through while the arrival icon is on screen (the
  * bug this was explicitly built to avoid -- see docs/notifications.md).
+ *
+ * The sequence is strictly splash-then-message: [onReveal] fires once, right
+ * after the icon-only hold ends and *before* [OneRingNotificationMotion.arrivalExit]
+ * starts -- i.e. while this overlay is still fully opaque -- which is the
+ * caller's cue that it's now safe to swap the feed underneath to the new/
+ * updated content. Only once that content is safely hidden behind the still-
+ * opaque splash does the exit fade begin, and only once the exit fade
+ * finishes does [onFinished] fire (removing this overlay and exposing what
+ * [onReveal] already swapped in). A caller that read live data directly
+ * instead of waiting for [onReveal] would let the new card flash into view
+ * before the splash ever started -- see [OneRingNotificationHost]'s class doc.
  */
 @Composable
 internal fun NotificationArrivalOverlay(
     notification: OneRingNotification,
     style: OneRingNotificationStyle,
     animationsEnabled: Boolean,
+    onReveal: () -> Unit,
     onFinished: () -> Unit,
 ) {
     val growProgress = remember(notification.threadKey, notification.sequence) { Animatable(0f) }
@@ -55,8 +67,11 @@ internal fun NotificationArrivalOverlay(
 
     LaunchedEffect(notification.threadKey, notification.sequence, animationsEnabled) {
         if (!animationsEnabled) {
-            // Reduced motion: skip the geometric arrival entirely, snap straight
-            // to fully revealed, and hand back to the feed immediately.
+            // Reduced motion: skip the geometric arrival entirely, reveal and
+            // hand back to the feed immediately -- there's no opaque cover to
+            // hide the reveal behind, so there's nothing "strictly before" to
+            // enforce here.
+            onReveal()
             onFinished()
             return@LaunchedEffect
         }
@@ -66,6 +81,7 @@ internal fun NotificationArrivalOverlay(
             iconProgress.animateTo(1f, style.motion.arrivalIconFade)
         }
         delay(style.motion.arrivalHoldUntilMillis)
+        onReveal()
         exitAlpha.animateTo(0f, style.motion.arrivalExit)
         onFinished()
     }
@@ -82,7 +98,7 @@ internal fun NotificationArrivalOverlay(
             }
             .clip(CircleShape)
             .background(style.colors.arrivalBackground)
-            .border(BorderStroke(1.5.dp, notification.accentColor), CircleShape)
+            .border(BorderStroke(5.dp, notification.accentColor), CircleShape)
             .clearAndSetSemantics {
                 liveRegion = LiveRegionMode.Polite
                 contentDescription = "New notification: ${notification.title}"

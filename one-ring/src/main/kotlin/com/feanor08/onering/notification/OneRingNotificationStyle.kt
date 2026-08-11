@@ -5,16 +5,37 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 
-/** Every color the notification feed draws with. Card backgrounds are near-black; accent colors come from each notification. */
+/**
+ * Every color the notification feed draws with. None of these are business/
+ * source-specific (that's entirely [OneRingNotificationPost.accentColor]'s
+ * job) -- these are the neutral surface/text colors a host theme supplies.
+ * See [OneRingNotificationDefaults.colors] (dark) and
+ * [OneRingNotificationDefaults.lightColors] (light); a caller with its own
+ * light/dark convention can supply any combination of these directly.
+ */
 @Immutable
 public data class OneRingNotificationColors internal constructor(
     public val cardBackground: Color,
     public val title: Color,
     public val body: Color,
     public val secondaryText: Color,
-    /** The arrival overlay's fill -- must stay fully opaque; see [OneRingNotificationHost]'s class doc. */
+    /**
+     * The arrival overlay's fill. Must be fully opaque (alpha == 1) -- the
+     * whole point of the arrival splash is that nothing behind it can show
+     * through (see [OneRingNotificationHost]'s "Arrival ordering" doc); a
+     * translucent value would silently reintroduce that bug. Enforced below
+     * rather than left as a documentation-only convention.
+     */
     public val arrivalBackground: Color,
-)
+) {
+    init {
+        require(arrivalBackground.alpha >= 0.999f) {
+            "arrivalBackground must be fully opaque (alpha ~1), was alpha=${arrivalBackground.alpha}. " +
+                "A translucent arrival background would let notification cards show through the arrival " +
+                "splash, which it must never do -- see OneRingNotificationHost's class doc."
+        }
+    }
+}
 
 /**
  * Every size/fraction the notification feed lays out with. Fraction fields

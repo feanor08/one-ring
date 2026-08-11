@@ -2,7 +2,7 @@ package com.feanor08.onering
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.center
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
@@ -11,7 +11,6 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.feanor08.onering.geometry.AngularSpan
 import com.feanor08.onering.geometry.SubmenuLayout
-import com.feanor08.onering.geometry.polarOffset
 import org.junit.Rule
 import org.junit.Test
 
@@ -31,30 +30,19 @@ class OneRingInteractionTest {
         OneRingItem.Action(id = "c", label = "C"),
     )
 
-    /** A point inside item index [index]'s wedge, in a canvas of side [sizeDp]. */
-    private fun pointInWedge(index: Int, count: Int, sizeDp: Int): Offset {
-        val sweep = 360f / count
-        val midDeg = -sweep / 2f + index * sweep
-        val radiusFraction = 0.7f // inside the main band's mid area
-        val offset = polarOffset(sizeDp * radiusFraction, midDeg)
-        return Offset(sizeDp / 2f + offset.x, sizeDp / 2f + offset.y)
-    }
-
     @Test fun releaseOverAnActionItemCommitsItAndClearsHighlight() {
         var lastAction: String? = null
-        val sizeDp = 300
 
         composeRule.setContent {
             OneRing(
                 items = items,
                 onAction = { lastAction = it.id },
-                modifier = Modifier.size(sizeDp.dp),
+                modifier = Modifier.size(300.dp),
             )
         }
 
-        val point = pointInWedge(index = 1, count = items.size, sizeDp = sizeDp)
         composeRule.onRoot().performTouchInput {
-            down(point)
+            down(pointInWedge(index = 1, count = items.size))
             up()
         }
         composeRule.waitForIdle()
@@ -64,18 +52,17 @@ class OneRingInteractionTest {
 
     @Test fun releaseOutsideTheRingCancelsWithoutFiringAnAction() {
         var lastAction: String? = null
-        val sizeDp = 300
 
         composeRule.setContent {
             OneRing(
                 items = items,
                 onAction = { lastAction = it.id },
-                modifier = Modifier.size(sizeDp.dp),
+                modifier = Modifier.size(300.dp),
             )
         }
 
         composeRule.onRoot().performTouchInput {
-            down(Offset(sizeDp / 2f, sizeDp / 2f)) // dead center, inside the empty core
+            down(center) // dead center, inside the empty core
             up()
         }
         composeRule.waitForIdle()
@@ -84,25 +71,21 @@ class OneRingInteractionTest {
     }
 
     @Test fun scrubbingBetweenWedgesUpdatesTheHighlightedState() {
-        val sizeDp = 300
         lateinit var state: OneRingState
 
         composeRule.setContent {
             state = rememberOneRingState()
-            OneRing(items = items, onAction = {}, state = state, modifier = Modifier.size(sizeDp.dp))
+            OneRing(items = items, onAction = {}, state = state, modifier = Modifier.size(300.dp))
         }
 
-        val first = pointInWedge(index = 0, count = items.size, sizeDp = sizeDp)
-        val second = pointInWedge(index = 2, count = items.size, sizeDp = sizeDp)
-
         composeRule.onRoot().performTouchInput {
-            down(first)
+            down(pointInWedge(index = 0, count = items.size))
         }
         composeRule.waitForIdle()
         assert(state.highlightedId == "a") { "expected highlight on a, was ${state.highlightedId}" }
 
         composeRule.onRoot().performTouchInput {
-            moveTo(second)
+            moveTo(pointInWedge(index = 2, count = items.size))
         }
         composeRule.waitForIdle()
         assert(state.highlightedId == "c") { "expected highlight to move to c, was ${state.highlightedId}" }
@@ -120,18 +103,15 @@ class OneRingInteractionTest {
             OneRingItem.Action(id = "b", label = "B"),
             OneRingItem.Action(id = "c", label = "C"),
         )
-        val sizeDp = 300
         lateinit var state: OneRingState
 
         composeRule.setContent {
             state = rememberOneRingState()
-            OneRing(items = menuItems, onAction = {}, state = state, modifier = Modifier.size(sizeDp.dp))
+            OneRing(items = menuItems, onAction = {}, state = state, modifier = Modifier.size(300.dp))
         }
 
-        val point = pointInWedge(index = 0, count = menuItems.size, sizeDp = sizeDp)
-
         composeRule.onRoot().performTouchInput {
-            down(point)
+            down(pointInWedge(index = 0, count = menuItems.size))
             up()
         }
         composeRule.waitForIdle()
@@ -142,7 +122,7 @@ class OneRingInteractionTest {
         // The parent wedge has grown to the selected radius and is now the
         // close control; pressing the same point again closes it.
         composeRule.onRoot().performTouchInput {
-            down(point)
+            down(pointInWedge(index = 0, count = menuItems.size))
             up()
         }
         composeRule.waitForIdle()
@@ -165,7 +145,6 @@ class OneRingInteractionTest {
             OneRingItem.Action(id = "b", label = "B"),
             OneRingItem.Action(id = "c", label = "C"),
         )
-        val sizeDp = 300
         lateinit var state: OneRingState
         var lastAction: String? = null
 
@@ -175,13 +154,12 @@ class OneRingInteractionTest {
                 items = menuItems,
                 onAction = { lastAction = it.id },
                 state = state,
-                modifier = Modifier.size(sizeDp.dp),
+                modifier = Modifier.size(300.dp),
             )
         }
 
-        val parentPoint = pointInWedge(index = 0, count = menuItems.size, sizeDp = sizeDp)
         composeRule.onRoot().performTouchInput {
-            down(parentPoint)
+            down(pointInWedge(index = 0, count = menuItems.size))
             up()
         }
         composeRule.waitForIdle()
@@ -200,11 +178,9 @@ class OneRingInteractionTest {
         )
         val childMidDeg = childSpans[0].midDeg
         val submenuMidRadiusFraction = (0.280f + 0.512f) / 2f // OneRingDefaults submenuInner/submenuOuter
-        val offset = polarOffset(sizeDp * submenuMidRadiusFraction, childMidDeg)
-        val childPoint = Offset(sizeDp / 2f + offset.x, sizeDp / 2f + offset.y)
 
         composeRule.onRoot().performTouchInput {
-            down(childPoint)
+            down(pointAtPolar(submenuMidRadiusFraction, childMidDeg))
             up()
         }
         composeRule.waitForIdle()
@@ -216,13 +192,12 @@ class OneRingInteractionTest {
 
     @Test fun talkBackSemanticClickCommitsAnActionWithoutAnyPointerGesture() {
         var lastAction: String? = null
-        val sizeDp = 300
 
         composeRule.setContent {
             OneRing(
                 items = items,
                 onAction = { lastAction = it.id },
-                modifier = Modifier.size(sizeDp.dp),
+                modifier = Modifier.size(300.dp),
             )
         }
 
@@ -261,19 +236,18 @@ class OneRingInteractionTest {
 
     @Test fun hapticsFireOnHighlightChangeAndOnCommitButNotContinuouslyWithinTheSameWedge() {
         val events = mutableListOf<OneRingHapticEvent>()
-        val sizeDp = 300
 
         composeRule.setContent {
             OneRing(
                 items = items,
                 onAction = {},
-                modifier = Modifier.size(sizeDp.dp),
+                modifier = Modifier.size(300.dp),
                 haptics = OneRingHaptics { events += it },
             )
         }
 
-        val point = pointInWedge(index = 0, count = items.size, sizeDp = sizeDp)
         composeRule.onRoot().performTouchInput {
+            val point = pointInWedge(index = 0, count = items.size)
             down(point)
             moveTo(point) // still inside the same wedge -- must not re-fire
             moveTo(point)

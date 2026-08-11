@@ -19,6 +19,7 @@ public object OneRingNotificationDefaults {
         motion: OneRingNotificationMotion = motion(),
     ): OneRingNotificationStyle = OneRingNotificationStyle(colors, dimensions, motion)
 
+    /** A dark host surface: near-black cards, near-white title, light-grey body. This is [style]'s default. */
     public fun colors(
         cardBackground: Color = Color(0xFF0B0C0C),
         title: Color = Color(0xFFF2F2F2),
@@ -33,16 +34,42 @@ public object OneRingNotificationDefaults {
         arrivalBackground = arrivalBackground,
     )
 
+    /**
+     * A light host surface: near-white cards, near-black title, dark-grey
+     * body -- for hosts with a light background (e.g. the sample's
+     * Notifications demo). Every notification's own
+     * [com.feanor08.onering.notification.OneRingNotificationPost.accentColor]
+     * still drives its border/icon/subtitle regardless of which of these two
+     * neutral palettes is in use.
+     */
+    public fun lightColors(
+        cardBackground: Color = Color(0xFFFFFFFF),
+        title: Color = Color(0xFF1A1B1D),
+        body: Color = Color(0xFF44474C),
+        secondaryText: Color = Color(0xFF787C82),
+        arrivalBackground: Color = Color(0xFFFFFFFF),
+    ): OneRingNotificationColors = colors(
+        cardBackground = cardBackground,
+        title = title,
+        body = body,
+        secondaryText = secondaryText,
+        arrivalBackground = arrivalBackground,
+    )
+
     public fun dimensions(
         maxCardWidthFraction: Float = 0.88f,
         edgeWidthReductionFraction: Float = 0.12f,
         edgeAlphaReductionFraction: Float = 0.4f,
-        minCardHeightFraction: Float = 0.40f,
+        // A floor, not a target -- real height is content-driven (see
+        // NotificationCard). At the default maxCardWidthFraction (0.88), this
+        // gives a minimum height/width ratio of ~0.36, matching a wide
+        // rectangular card rather than a square tile for short messages.
+        minCardHeightFraction: Float = 0.32f,
         cornerRadius: Dp = 14.dp,
-        borderWidth: Dp = 1.5.dp,
+        borderWidth: Dp = 2.dp,
         cardSpacing: Dp = 10.dp,
         groupSpacing: Dp = 20.dp,
-        horizontalContentPadding: Dp = 16.dp,
+        horizontalContentPadding: Dp = 12.dp,
         topContentPaddingFraction: Float = 0.25f,
         bottomContentPaddingFraction: Float = 0.30f,
     ): OneRingNotificationDimensions = OneRingNotificationDimensions(

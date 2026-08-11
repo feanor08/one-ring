@@ -41,6 +41,49 @@ import com.feanor08.onering.internal.rememberAnimationsEnabled
  *
  * For testing (or using the host outside a ring entirely), see the overload
  * taking an explicit [visible] flag.
+ *
+ * ### Arrival ordering
+ *
+ * The feed does **not** render [OneRingNotificationState.groups] directly.
+ * [state]'s own data updates the instant [OneRingNotificationState.post] is
+ * called, but the *rendered* feed must never expose a new/updated card before
+ * its arrival splash has started covering it -- otherwise the update would
+ * visibly flash into view a frame (or more) before the splash appears. To
+ * guarantee that ordering, this host keeps `safeGroups`, a snapshot that
+ * continuously mirrors [state]'s live groups *only while no arrival is in
+ * flight*; the moment an arrival starts, `safeGroups` is already correct
+ * (the value from just before the change, no time-travel needed) and simply
+ * stops being updated, so the feed stays pinned on it. [NotificationArrivalOverlay]
+ * only calls back to swap `safeGroups` over to the live value once it is
+ * already fully covering the screen (see its `onReveal` doc) -- so the swap
+ * itself is never visible either. The feed is also made non-interactive for
+ * the duration of an active arrival (see "coreOverlay interactivity" below),
+ * so nothing (e.g. a dismiss) can race that snapshot.
+ *
+ * ### coreOverlay interactivity
+ *
+ * `OneRing`'s `coreOverlay` slot has no built-in mechanism that stops its
+ * content from intercepting a submenu/seek gesture -- that's each
+ * `coreOverlay` consumer's own responsibility, using
+ * [com.feanor08.onering.OneRingCenterScope.mode] (see
+ * [com.feanor08.onering.OneRing]'s `coreOverlay` parameter doc). This host
+ * does it by threading an `interactive` flag (`visible && activeArrival ==
+ * null`) down to [NotificationFeedList], which uses it to decide whether its
+ * `pointerInput` modifiers -- the list's own scroll, each card's swipe, each
+ * card's dismiss button -- are even *installed* at all, via plain
+ * conditional composition (`Modifier.then(if (interactive) Modifier.pointerInput
+ * { ... } else Modifier)` and `LazyColumn`'s own `userScrollEnabled`).
+ *
+ * This is deliberately a composition-level gate, not a pointer-consumption
+ * one: a consumption-based approach (an ancestor marking events "consumed"
+ * on some pass, hoping descendants -- and only descendants -- respect it)
+ * depends on assumptions about how Compose orders and delivers events across
+ * *sibling* subtrees (this feed vs. the ring's own `Canvas`), which aren't
+ * something to rely on. Conditionally omitting the `pointerInput` modifiers
+ * altogether needs no such assumption: when not interactive, there is
+ * nothing here for hit-testing to find, full stop, regardless of how
+ * sibling dispatch order works. The visual tree (icons, text, the fade
+ * itself) is completely unaffected -- only whether it can be touched.
  */
 @Composable
 public fun OneRingCenterScope.OneRingNotificationHost(
@@ -73,6 +116,28 @@ public fun OneRingNotificationHost(
     var lastAnnouncedSequence by remember { mutableLongStateOf(0L) }
     var activeArrival by remember { mutableStateOf<OneRingNotification?>(null) }
 
+    // See this file's "Arrival ordering" doc: continuously mirrors
+    // `state.groups` while nothing is (or is about to be) mid-arrival, so
+    // it's already the correct pre-change value the instant an arrival
+    // begins, and simply stops moving until that arrival's `onReveal`
+    // explicitly catches it up.
+    //
+    // `arrivalPending` is NOT just `activeArrival != null`: `activeArrival`
+    // is only set by the LaunchedEffect below, which runs asynchronously --
+    // on the frame where a post() first makes `shouldPlayArrival` true, that
+    // effect hasn't run yet, so `activeArrival` is still null. Gating on
+    // `activeArrival` alone would let this exact frame mirror the brand-new
+    // data before the splash has even started, reintroducing the "message
+    // flashes before splash" bug. Recomputing the same `shouldPlayArrival`
+    // check synchronously here closes that one-frame gap.
+    val latestForGate = state.latestSequence
+    val arrivalPending = activeArrival != null || shouldPlayArrival(visible, latestForGate, lastAnnouncedSequence)
+    var safeGroups by remember { mutableStateOf(state.groups) }
+    if (!arrivalPending) {
+        safeGroups = state.groups
+    }
+    val displayedGroups = if (arrivalPending) safeGroups else state.groups
+
     LaunchedEffect(visible, animationsEnabled) {
         val target = if (visible) 1f else 0f
         if (animationsEnabled) feedAlpha.animateTo(target, style.motion.visibilityFade) else feedAlpha.snapTo(target)
@@ -99,6 +164,12 @@ public fun OneRingNotificationHost(
         val sizePx = with(density) { Size(maxWidth.toPx(), maxHeight.toPx()) }
         val diameterPx = minOf(sizePx.width, sizePx.height)
 
+        // Non-interactive for the whole time an arrival is covering the feed
+        // too -- there's nothing useful to touch behind an opaque splash,
+        // and this is what keeps `safeGroups` from racing a dismiss (see the
+        // class doc's "Arrival ordering" section).
+        val interactive = visible && activeArrival == null
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -106,9 +177,10 @@ public fun OneRingNotificationHost(
                 .semantics { if (!visible) invisibleToUser() },
         ) {
             NotificationFeedList(
-                groups = state.groups,
+                groups = displayedGroups,
                 style = style,
                 coreOverlayDiameterPx = diameterPx,
+                interactive = interactive,
                 onDismiss = { threadKey -> state.dismiss(threadKey) },
             )
         }
@@ -118,6 +190,7 @@ public fun OneRingNotificationHost(
                 notification = notification,
                 style = style,
                 animationsEnabled = animationsEnabled,
+                onReveal = { safeGroups = state.groups },
                 onFinished = {
                     lastAnnouncedSequence = advancedWatermark(notification.sequence)
                     activeArrival = null

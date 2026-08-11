@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onFirst
@@ -209,11 +210,9 @@ class OneRingNotificationHostTest {
         waitForArrivalToSettle()
         composeRule.waitForIdle()
 
-        // The oldest group (whatsapp) is still reachable by scrolling the single feed.
-        composeRule.onNode(hasScrollAction()).performScrollToNode(
-            SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("WhatsApp, 1 active")),
-        )
-        composeRule.onNodeWithContentDescription("WhatsApp, 1 active").assertExists()
+        // The oldest group's (whatsapp) card is still reachable by scrolling the single feed.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Adarsh"))
+        composeRule.onNodeWithContentDescription("Adarsh. WhatsApp. hi").assertExists()
     }
 
     @Test
@@ -242,5 +241,122 @@ class OneRingNotificationHostTest {
             .assertCountEquals(0)
         composeRule.onAllNodesWithContentDescription("Adarsh", substring = true, useUnmergedTree = true)
             .onFirst().assertExists()
+    }
+
+    /**
+     * The regression this session fixed: a distinct new thread's card must
+     * never be exposed before its own arrival splash has started -- the
+     * order must be strictly splash-then-message, never
+     * message-then-splash-then-message.
+     */
+    @Test
+    fun aNewThreadsCardIsNeverExposedBeforeItsArrivalSplashStarts() {
+        lateinit var state: OneRingNotificationState
+        composeRule.setContent {
+            state = rememberOneRingNotificationState()
+            OneRingNotificationHost(state = state, visible = true, modifier = Modifier.size(300.dp))
+        }
+
+        // An existing, already-settled notification.
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:adarsh", "whatsapp", "WhatsApp", "Adarsh", "hi"))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithContentDescription("Adarsh", substring = true, useUnmergedTree = true)
+            .onFirst().assertExists()
+
+        // A brand new, distinct thread arrives.
+        composeRule.runOnIdle {
+            state.post(post("software:update", "software", "Software", "Software Update", "v2.4 ready"))
+        }
+
+        // Matches on the card's own message text, not its title -- the
+        // arrival's own live-region banner is "New notification: Software
+        // Update", which would itself satisfy a substring match on the title.
+        val cardMarker = "v2.4 ready"
+
+        // Checked BEFORE waiting for the splash: catches the window between
+        // post() and the splash actually appearing, where the old (buggy)
+        // implementation let the new card flash into view.
+        composeRule.onAllNodesWithContentDescription(cardMarker, substring = true, useUnmergedTree = true)
+            .assertCountEquals(0)
+
+        composeRule.waitUntil(timeoutMillis = 2_000) {
+            composeRule.onAllNodesWithContentDescription("New notification: Software Update", substring = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        // Still not exposed while the splash is actually up.
+        composeRule.onAllNodesWithContentDescription(cardMarker, substring = true, useUnmergedTree = true)
+            .assertCountEquals(0)
+
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithContentDescription(cardMarker, substring = true, useUnmergedTree = true)
+            .onFirst().assertExists()
+    }
+
+    /** Same ordering guarantee, for a same-thread update ("2 messages" must never appear before its splash). */
+    @Test
+    fun aSameThreadUpdateIsNeverExposedBeforeItsArrivalSplash() {
+        lateinit var state: OneRingNotificationState
+        composeRule.setContent {
+            state = rememberOneRingNotificationState()
+            OneRingNotificationHost(state = state, visible = true, modifier = Modifier.size(300.dp))
+        }
+
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:adarsh", "whatsapp", "WhatsApp", "Adarsh", "I'll reach in 10 minutes."))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:adarsh", "whatsapp", "WhatsApp", "Adarsh", "I'm outside."))
+        }
+
+        composeRule.onAllNodesWithContentDescription("2 messages", substring = true, useUnmergedTree = true)
+            .assertCountEquals(0)
+
+        composeRule.waitUntil(timeoutMillis = 2_000) {
+            composeRule.onAllNodesWithContentDescription("New notification: Adarsh", substring = true)
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onAllNodesWithContentDescription("2 messages", substring = true, useUnmergedTree = true)
+            .assertCountEquals(0)
+
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithContentDescription("2 messages", substring = true, useUnmergedTree = true)
+            .onFirst().assertExists()
+    }
+
+    /**
+     * A dismiss on an already-revealed card must still work immediately,
+     * proving the arrival-ordering fix's `safeGroups` snapshot never goes
+     * stale for unrelated changes (only pinned while an arrival is actually
+     * in flight -- see [OneRingNotificationHost]'s "Arrival ordering" doc).
+     */
+    @Test
+    fun dismissingAnUnrelatedCardWorksImmediatelyAndIsNotBlockedByArrivalPinning() {
+        lateinit var state: OneRingNotificationState
+        composeRule.setContent {
+            state = rememberOneRingNotificationState()
+            OneRingNotificationHost(state = state, visible = true, modifier = Modifier.size(300.dp))
+        }
+
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:adarsh", "whatsapp", "WhatsApp", "Adarsh", "hi"))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Dismiss Adarsh notification", useUnmergedTree = true)
+            .performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onAllNodesWithContentDescription("Adarsh", substring = true, useUnmergedTree = true)
+            .assertCountEquals(0)
+        assert(state.notifications.isEmpty())
     }
 }

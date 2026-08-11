@@ -88,19 +88,23 @@ Never two. Ordering is driven by an internal monotonically increasing
 sequence, never wall-clock time — an updated thread (and its source group)
 always moves to the front.
 
+A caller-supplied `subtitle` is a **base label**, not a full override of the
+count: `subtitle = "WhatsApp"` with one message reads "WhatsApp"; the same
+thread updated to two messages reads "WhatsApp · 2 messages" regardless. The
+count is always appended once a thread has more than one message.
+
 ## Source grouping
 
 Threads are grouped by `sourceKey` — a plain string the library never
-interprets (`"whatsapp"`, `"vehicle"`, whatever the consumer wants). Each
-group gets a small header (source icon, label, active-thread count). Groups
-are ordered most-recently-updated first; within a group, threads are also
-newest-first. A source's header disappears the moment its last thread is
-dismissed — there's no separate "empty group" state.
+interprets (`"whatsapp"`, `"vehicle"`, whatever the consumer wants), purely
+to decide ordering: groups are ordered most-recently-updated first, and
+within a group, threads are also newest-first. There's no separate header row
+per group — each card already carries its own source via `subtitle`.
 
 ## Whole-feed scrolling
 
-The entire feed — every source header and every card — is **one**
-`LazyColumn`. There is no per-card scroll container: a card taller than the
+The entire feed — every card — is **one** `LazyColumn`. There is no
+per-card scroll container: a card taller than the
 visible circular viewport simply extends past it, and the user continues
 scrolling the *feed* to read the rest and carry straight on into the next
 card. Cards narrow and dim slightly as they scroll toward the circular
@@ -127,6 +131,24 @@ settled again. Notification **data** is never cleared while hidden — posting
 while a submenu is open updates the feed immediately; the user just sees the
 updated content once they return, with no stale visual replay.
 
+The feed is also completely non-hit-testable the whole time it's hidden (or
+covered by an arrival splash — see below). `OneRing`'s `coreOverlay` slot has
+no built-in mechanism for this; it's `OneRingNotificationHost`'s own
+responsibility, using `OneRingCenterScope.mode`. It's done by *composition*,
+not by consuming pointer events: an `interactive` flag
+(`visible && activeArrival == null`) is threaded down to `NotificationFeedList`,
+which uses it to decide whether its `pointerInput` modifiers -- the list's
+own scroll (`LazyColumn`'s `userScrollEnabled`), each card's swipe, each
+card's dismiss button -- are even *installed* at all. When not interactive,
+there is nothing there for hit-testing to find, full stop -- so a hidden feed
+can never intercept a submenu wedge press or a seek drag that geometrically
+overlaps its radius (which it does by design -- `coreOverlayRadius` sits
+inside the submenu band). See `OneRingNotificationHost`'s "coreOverlay
+interactivity" doc for why this is preferred over a consumption-based
+approach: it doesn't depend on any assumption about how Compose orders or
+delivers pointer events across sibling subtrees (this feed vs. the ring's own
+`Canvas`).
+
 ## Incoming icon-first arrival animation
 
 A new post that arrives *while the feed is visible* plays a brief, fully
@@ -136,6 +158,23 @@ back to `icon`), holds briefly, then fades/scales away to reveal the updated
 feed underneath. The arrival circle is genuinely opaque for its entire
 grow-and-hold phase — only the final exit phase ever reduces its alpha — so
 existing cards can never show through behind the icon.
+`OneRingNotificationColors.arrivalBackground` enforces this: its `init`
+block requires full opacity (alpha ~1), rejecting a translucent value at
+construction rather than allowing a silent regression.
+
+**Ordering is strictly splash-then-message, never message-then-splash.**
+`OneRingNotificationHost` never renders `OneRingNotificationState`'s live
+data directly — it renders a `safeGroups` snapshot that only ever mirrors the
+live data while nothing is (or is about to be) mid-arrival. The moment a post
+makes an arrival necessary, that mirroring stops immediately (computed
+synchronously in the same composition pass the change is first observed in,
+not one frame later), so the new/updated card is never exposed even for a
+single frame before its own splash starts covering it.
+`NotificationArrivalOverlay` only calls back to catch `safeGroups` up to the
+live value once it is already fully opaque and covering the screen (right
+after the icon-only hold, before the exit fade starts) — so the swap itself
+is invisible too. See `OneRingNotificationHost`'s "Arrival ordering" class
+doc for the full mechanism.
 
 A post that arrives *while the feed is hidden* (behind a submenu/seek) never
 plays this animation there; the data updates silently, and no stale arrival
@@ -149,8 +188,22 @@ Each notification carries its own `accentColor`, which drives its card
 border, its own icon and its source header, its subtitle, its X's hover/press
 tint, and its swipe-dismiss affordance — and the arrival animation's icon and
 border, when that notification is the one arriving. There is no library-wide
-notification color; cards themselves stay a consistent near-black regardless
-of source.
+*business* notification color (no source ever gets hardcoded into the
+library); the neutral surface/text colors themselves come from whichever
+`OneRingNotificationColors` preset the host theme picks (see below).
+
+## Light and dark hosts
+
+`OneRingNotificationColors` (`cardBackground`, `title`, `body`,
+`secondaryText`, `arrivalBackground`) is entirely caller-suppliable — none of
+it is source-specific. `OneRingNotificationDefaults.colors()` is a dark
+preset (near-black cards); `OneRingNotificationDefaults.lightColors()` is a
+light one (near-white cards, near-black title) for a light host background,
+used by the sample's own Notifications demo. Every notification's own
+`accentColor` drives its border/icon/subtitle regardless of which neutral
+preset is active, so switching between them (or supplying entirely custom
+colors to match some other theming convention) never touches notification
+logic.
 
 ## Reduced motion
 

@@ -1,7 +1,6 @@
 package com.feanor08.onering.notification
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -52,10 +51,27 @@ import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-private val CardIconSize = 22.dp
-private val DismissTargetSize = 32.dp
+private val CardIconSize = 18.dp
+private val CardIconSpacing = 6.dp
+private val DismissTargetSize = 28.dp
 private const val SWIPE_DISMISS_THRESHOLD_FRACTION = 0.32f
 private const val SWIPE_OVERSHOOT_FRACTION = 1.15f
+
+/**
+ * The subtitle actually shown on a card: [OneRingNotification.subtitle] (or,
+ * if none was ever supplied, [OneRingNotification.sourceLabel]) as the BASE
+ * text, with a `· N messages` count suffix appended whenever more than one
+ * message has accumulated. A caller-supplied subtitle is a base label, not a
+ * replacement for the count -- three accumulated messages must always read
+ * "WhatsApp · 3 messages", never just "WhatsApp", regardless of whether the
+ * caller ever set [OneRingNotification.subtitle] explicitly. Pure so it's
+ * unit-testable without Compose.
+ */
+internal fun displaySubtitle(notification: OneRingNotification): String {
+    val base = notification.subtitle ?: notification.sourceLabel
+    val count = notification.messages.size
+    return if (count > 1) "$base · $count messages" else base
+}
 
 /**
  * One notification thread's card: title, source/count subtitle, every
@@ -69,32 +85,41 @@ private const val SWIPE_OVERSHOOT_FRACTION = 1.15f
 internal fun NotificationCard(
     notification: OneRingNotification,
     style: OneRingNotificationStyle,
+    interactive: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val offsetX = remember(notification.threadKey) { Animatable(0f) }
+    var offsetX by remember(notification.threadKey) { mutableFloatStateOf(0f) }
     var widthPx by remember { mutableFloatStateOf(0f) }
 
-    val subtitle = notification.subtitle ?: run {
-        val count = notification.messages.size
-        if (count > 1) "${notification.sourceLabel} · $count messages" else notification.sourceLabel
-    }
+    val subtitle = displaySubtitle(notification)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .onSizeChanged { widthPx = it.width.toFloat() }
-            .graphicsLayer { translationX = offsetX.value }
-            .pointerInput(notification.threadKey) {
-                swipeToDismissGesture(
-                    offsetX = offsetX,
-                    widthPxProvider = { widthPx },
-                    style = style,
-                    scope = scope,
-                    onDismiss = onDismiss,
-                )
-            }
+            .graphicsLayer { translationX = offsetX }
+            // Composition-level gate, not a consumption trick: while not
+            // interactive, this `pointerInput` modifier simply isn't part of
+            // the tree at all, so there's nothing here for hit-testing to
+            // find -- see NotificationFeedList's class doc.
+            .then(
+                if (interactive) {
+                    Modifier.pointerInput(notification.threadKey) {
+                        swipeToDismissGesture(
+                            widthPxProvider = { widthPx },
+                            style = style,
+                            scope = scope,
+                            currentOffset = { offsetX },
+                            setOffset = { offsetX = it },
+                            onDismiss = onDismiss,
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            )
             .background(style.colors.cardBackground, RoundedCornerShape(style.dimensions.cornerRadius))
             .border(
                 BorderStroke(style.dimensions.borderWidth, notification.accentColor),
@@ -115,7 +140,7 @@ internal fun NotificationCard(
                     },
                 )
             }
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = style.dimensions.horizontalContentPadding, vertical = 8.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -125,7 +150,7 @@ internal fun NotificationCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     RenderIcon(icon = notification.icon, tint = notification.accentColor, size = CardIconSize)
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(CardIconSpacing))
                     Column(modifier = Modifier.weight(1f)) {
                         BasicText(
                             text = notification.title,
@@ -140,16 +165,17 @@ internal fun NotificationCard(
                 DismissButton(
                     tint = notification.accentColor,
                     title = notification.title,
+                    interactive = interactive,
                     onDismiss = onDismiss,
                 )
             }
-            Spacer(modifier = Modifier.size(6.dp))
+            Spacer(modifier = Modifier.size(4.dp))
             Column {
                 notification.messages.forEach { message ->
                     BasicText(
                         text = message,
                         style = TextStyle(color = style.colors.body, fontSize = 13.sp, lineHeight = 17.sp),
-                        modifier = Modifier.padding(vertical = 1.5.dp),
+                        modifier = Modifier.padding(vertical = 1.dp),
                     )
                 }
             }
@@ -162,21 +188,31 @@ internal fun NotificationCard(
 }
 
 @Composable
-private fun DismissButton(tint: Color, title: String, onDismiss: () -> Unit) {
+private fun DismissButton(tint: Color, title: String, interactive: Boolean, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .size(DismissTargetSize)
-            .clearAndSetSemantics {
-                contentDescription = "Dismiss $title notification"
-                role = Role.Button
-                onClick(label = "Dismiss") {
-                    onDismiss()
-                    true
-                }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures { onDismiss() }
-            },
+            .then(
+                if (interactive) {
+                    Modifier
+                        .clearAndSetSemantics {
+                            contentDescription = "Dismiss $title notification"
+                            role = Role.Button
+                            onClick(label = "Dismiss") {
+                                onDismiss()
+                                true
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectTapGestures { onDismiss() }
+                        }
+                } else {
+                    // Not interactive: no semantics, no gesture -- the icon
+                    // still renders (the fade-out stays visually complete),
+                    // it just isn't a real button while covered/hidden.
+                    Modifier.clearAndSetSemantics {}
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         DismissGlyph(tint = tint)
@@ -207,22 +243,29 @@ private fun DismissGlyph(tint: Color) {
 /**
  * Swipe-left-to-dismiss with a directional lock against the enclosing
  * `LazyColumn`'s vertical scroll: horizontal movement is only claimed once it
- * clearly wins over vertical movement (see the threshold below), matching
+ * clearly wins over vertical movement (see the threshold below). Matching
  * [com.feanor08.onering.internal.RingInteractionController]'s
  * `awaitEachGesture`-based approach rather than Foundation's swipe-to-dismiss
  * (which would pull in a Material dependency this module deliberately
  * doesn't have -- see docs/notifications.md).
+ *
+ * The live drag position is written directly via [setOffset] on every move
+ * event -- a plain (non-suspend) state write, not a per-event
+ * `scope.launch { ... }` -- so a drag never spins up more than the one
+ * coroutine [scope] launches at release, for the settle-back or
+ * dismiss-continuation animation.
  */
 private suspend fun PointerInputScope.swipeToDismissGesture(
-    offsetX: Animatable<Float, AnimationVector1D>,
     widthPxProvider: () -> Float,
     style: OneRingNotificationStyle,
     scope: CoroutineScope,
+    currentOffset: () -> Float,
+    setOffset: (Float) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val touchSlop = viewConfiguration.touchSlop
     awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
+        val down = awaitFirstDown()
         var locked = false
         var settledOut = false
         var totalDx = 0f
@@ -234,13 +277,20 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
                 if (locked) {
                     val widthPx = widthPxProvider().takeIf { it > 0f } ?: 1f
                     val dismissThresholdPx = widthPx * SWIPE_DISMISS_THRESHOLD_FRACTION
-                    if (offsetX.value < -dismissThresholdPx) {
+                    val startOffset = currentOffset()
+                    if (startOffset < -dismissThresholdPx) {
                         scope.launch {
-                            offsetX.animateTo(-widthPx * SWIPE_OVERSHOOT_FRACTION, style.motion.swipeDismiss)
+                            Animatable(startOffset).animateTo(-widthPx * SWIPE_OVERSHOOT_FRACTION, style.motion.swipeDismiss) {
+                                setOffset(value)
+                            }
                             onDismiss()
                         }
                     } else {
-                        scope.launch { offsetX.animateTo(0f, style.motion.swipeSettle) }
+                        scope.launch {
+                            Animatable(startOffset).animateTo(0f, style.motion.swipeSettle) {
+                                setOffset(value)
+                            }
+                        }
                     }
                 }
                 break
@@ -262,7 +312,7 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
                     }
                 }
             } else if (locked) {
-                scope.launch { offsetX.snapTo((offsetX.value + dx).coerceAtMost(0f)) }
+                setOffset((currentOffset() + dx).coerceAtMost(0f))
                 change.consume()
             }
         }

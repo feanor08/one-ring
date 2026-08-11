@@ -11,6 +11,56 @@ Everything below has landed on `main` but nothing has been published anywhere
 other than a local Maven cache (`./gradlew :one-ring:publishToMavenLocal`).
 There is no `0.1.0` tag/release yet.
 
+### Changed (notification follow-up fixes)
+
+- **Fixed: a hidden `coreOverlay` could intercept a submenu/seek gesture.**
+  `OneRing`'s `coreOverlay` slot is now wrapped in a new, generic
+  `internal fun Modifier.blockPointerInputWhen(blocked: Boolean)`
+  (`internal/PointerInputBlocking.kt`) that intercepts pointer events on the
+  `Initial` pass -- before any descendant's own scroll/swipe/tap detector
+  sees them -- the instant the ring leaves `Idle`/`Tracking`. Content stays
+  fully composed (state preserved) but becomes completely non-hit-testable.
+  `NotificationCard`'s swipe gesture also now uses `awaitFirstDown()`'s
+  default `requireUnconsumed = true` (was `false`) so it actually respects
+  that ancestor consumption.
+- **Fixed: the arrival splash could show a notification's message before the
+  splash itself appeared.** Root cause: the feed rendered
+  `OneRingNotificationState`'s live data directly, which updates synchronously
+  on `post()`, while the arrival overlay activated one frame later via a
+  `LaunchedEffect`. `OneRingNotificationHost` now renders a `safeGroups`
+  snapshot that stops mirroring live data (computed synchronously, not via an
+  effect) the instant a post makes an arrival necessary, and
+  `NotificationArrivalOverlay` gained an `onReveal` callback -- fired after
+  the icon-only hold, before the exit fade starts -- which is the only point
+  `safeGroups` is allowed to catch up. Order is now strictly splash-then-
+  message, with no frame where the new/updated card is exposed early.
+- **Fixed: a permanent dark circle showed in the ring's empty core.** No
+  notification code drew this; it was the pre-existing small `center` slot's
+  default fill showing through the now-otherwise-transparent `coreOverlay`.
+  The sample's `NotificationDemo` now explicitly passes
+  `OneRingDefaults.colors(center = Color.Transparent)`.
+- **Fixed: a caller-supplied `subtitle` suppressed the message count.** New
+  `internal fun displaySubtitle(notification): String` (`NotificationCard.kt`)
+  treats `subtitle` as a base label -- three messages now always reads
+  "WhatsApp · 3 messages", never just "WhatsApp".
+- **Notification theming is no longer dark-only.** Added
+  `OneRingNotificationDefaults.lightColors()`; `OneRingNotificationColors`
+  now validates `arrivalBackground` is fully opaque at construction
+  (`require`, not just documentation). The sample's Notifications demo uses
+  the light preset to match its white background.
+- Source group headers (icon + active-thread count) now use that group's
+  accent color instead of neutral text; the source label itself stays neutral.
+- Card padding is now horizontal-heavy (16dp / 8dp, was 14dp / 12dp) and
+  `minCardHeightFraction` dropped from 0.40 to 0.32, so a short card reads as
+  a wide rectangle rather than a near-square tile.
+- `NotificationCard`'s swipe gesture no longer launches a coroutine per
+  pointer-move event; the live drag offset is written directly (a plain,
+  non-suspend state write) from the gesture's own coroutine, with a single
+  `scope.launch` only for the post-release settle/dismiss-continuation
+  animation.
+- The sample's Notifications demo ring is now responsively sized (up to
+  460dp, was a fixed 340dp) via `BoxWithConstraints`.
+
 ### Changed
 
 - **The icon -> X change is staged rather than crossfaded.** Opening a menu (or
