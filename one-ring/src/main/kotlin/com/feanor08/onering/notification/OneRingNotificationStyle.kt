@@ -1,6 +1,7 @@
 package com.feanor08.onering.notification
 
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -53,6 +54,15 @@ public data class OneRingNotificationDimensions internal constructor(
     public val edgeAlphaReductionFraction: Float,
     /** A card's minimum height as a fraction of the core overlay's diameter -- a floor, not a fixed height. */
     public val minCardHeightFraction: Float,
+    /**
+     * A stack's *front* card's maximum visible height while collapsed, as a
+     * fraction of the core overlay's diameter -- a ceiling on the collapsed
+     * endpoint only. A long message is clipped (not truncated in text, just
+     * visually capped) rather than growing the collapsed card without bound;
+     * expanding always reveals the card's full natural height regardless of
+     * this value (see [NotificationGroupSlot]).
+     */
+    public val collapsedCardMaxHeightFraction: Float,
     public val cornerRadius: Dp,
     public val borderWidth: Dp,
     /** Vertical gap between cards within a source group. */
@@ -75,6 +85,9 @@ public data class OneRingNotificationDimensions internal constructor(
         }
         require(minCardHeightFraction in 0f..1f) {
             "minCardHeightFraction must be in 0..1, was $minCardHeightFraction"
+        }
+        require(collapsedCardMaxHeightFraction in 0f..1f) {
+            "collapsedCardMaxHeightFraction must be in 0..1, was $collapsedCardMaxHeightFraction"
         }
         require(topContentPaddingFraction in 0f..1f) {
             "topContentPaddingFraction must be in 0..1, was $topContentPaddingFraction"
@@ -110,6 +123,14 @@ public data class OneRingNotificationMotion internal constructor(
     public val swipeSettle: AnimationSpec<Float>,
     /** A swipe that crossed the dismiss threshold, animating the rest of the way off-screen. */
     public val swipeDismiss: AnimationSpec<Float>,
+    /**
+     * A stacked source's collapsed/expanded transition (see
+     * [NotificationGroupSlot]) -- drives one 0..1 progress value shared by
+     * position, width scale, clip height, and content alpha. Skipped
+     * entirely (endpoint snap) when animations are disabled -- see
+     * [com.feanor08.onering.internal.rememberAnimationsEnabled].
+     */
+    public val stackExpand: FiniteAnimationSpec<Float>,
 )
 
 /** The complete visual + motion configuration for [OneRingNotificationHost]. */

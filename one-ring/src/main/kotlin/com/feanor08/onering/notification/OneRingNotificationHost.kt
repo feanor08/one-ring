@@ -116,6 +116,15 @@ public fun OneRingNotificationHost(
     var lastAnnouncedSequence by remember { mutableLongStateOf(0L) }
     var activeArrival by remember { mutableStateOf<OneRingNotification?>(null) }
 
+    // Stored vs. effective expansion -- see docs/notifications-plan.md
+    // section 7. `storedExpandedSourceKey` is the user's raw last-tapped
+    // intent; rendering never reads it directly. `effectiveExpandedSourceKey`
+    // is what actually renders expanded this frame: the stored key only
+    // counts while it still names a *displayed* (arrival-safe) group with
+    // two or more threads. That's a pure derivation, computed fresh every
+    // composition -- never a state write during composition.
+    var storedExpandedSourceKey by remember { mutableStateOf<String?>(null) }
+
     // See this file's "Arrival ordering" doc: continuously mirrors
     // `state.groups` while nothing is (or is about to be) mid-arrival, so
     // it's already the correct pre-change value the instant an arrival
@@ -137,6 +146,23 @@ public fun OneRingNotificationHost(
         safeGroups = state.groups
     }
     val displayedGroups = if (arrivalPending) safeGroups else state.groups
+
+    // What actually renders expanded this frame -- see the field doc above.
+    // Derived from `displayedGroups` (what's on screen), not raw `state.groups`,
+    // so expansion never describes something behind the arrival splash.
+    val effectiveExpandedSourceKey = effectiveExpandedSourceKey(storedExpandedSourceKey, displayedGroups)
+
+    // If the stored intent has gone stale (its source vanished or dropped to
+    // one thread), rendering above already reads the correct (null) effective
+    // value on this same frame -- this effect only clears the stale *stored*
+    // value afterwards, purely so a source that later regains a second
+    // thread doesn't spontaneously re-expand. Never a write during
+    // composition (see docs/notifications-plan.md section 7).
+    LaunchedEffect(storedExpandedSourceKey, effectiveExpandedSourceKey) {
+        if (storedExpandedSourceKey != null && effectiveExpandedSourceKey == null) {
+            storedExpandedSourceKey = null
+        }
+    }
 
     LaunchedEffect(visible, animationsEnabled) {
         val target = if (visible) 1f else 0f
@@ -181,7 +207,11 @@ public fun OneRingNotificationHost(
                 style = style,
                 coreOverlayDiameterPx = diameterPx,
                 interactive = interactive,
+                expandedSourceKey = effectiveExpandedSourceKey,
                 onDismiss = { threadKey -> state.dismiss(threadKey) },
+                onToggleExpanded = { sourceKey ->
+                    storedExpandedSourceKey = toggleExpanded(storedExpandedSourceKey, sourceKey)
+                },
             )
         }
 

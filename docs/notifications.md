@@ -101,6 +101,57 @@ to decide ordering: groups are ordered most-recently-updated first, and
 within a group, threads are also newest-first. There's no separate header row
 per group — each card already carries its own source via `subtitle`.
 
+## Multi-thread stacks
+
+A source with two or more active threads collapses into an Apple-style stack
+instead of one card per thread: the newest-updated thread is the front card,
+older threads peek from behind it as a real (not decorative) backing strip —
+up to two visible rear depths regardless of how many threads the source
+actually has. Tapping the front card expands the stack in place (every active
+thread becomes a full, independently interactive card); tapping the front
+card again collapses it. Only one source is ever expanded at a time —
+expanding a different source implicitly collapses whatever was open.
+
+```kotlin
+notifications.post(OneRingNotificationPost(threadKey = "chat:adarsh", sourceKey = "messaging", title = "Adarsh", message = "I'll reach in 10 minutes.", /* ... */))
+notifications.post(OneRingNotificationPost(threadKey = "chat:varsha", sourceKey = "messaging", title = "Varsha", message = "Are we still on for tonight?", /* ... */))
+```
+
+renders as one collapsed stack, front card:
+
+```
+Varsha                         Messages · 2
+Messages
+Are we still on for tonight?
+```
+
+The front card's own `"Messages · 2"` label is the **source's active-thread
+count** — a fact independent of, and additive to, the existing per-thread
+`displaySubtitle()` message count described above. A three-thread source
+whose front thread has accumulated five messages shows both simultaneously:
+`"Messages · 3"` (source) and `"Messages · 5 messages"` (thread), never one
+substituting for the other.
+
+Every card in a stack — front and every rear position — is a real,
+persistently-keyed `NotificationCard` for a real thread, never a decorative
+placeholder; a thread's own remembered state (its live swipe offset, its
+Compose node identity) survives collapse, expand, insertion, dismissal, and
+reordering intact. Dismissing the front thread promotes the next-newest
+thread to front; dismissing any thread while expanded removes only that
+thread; a source dropping to one thread becomes an ordinary card (no stack
+chrome); a source dropping to zero threads disappears entirely, same as any
+other source.
+
+While collapsed, a rear card exposes no readable or actionable accessibility
+semantics at all (not merely disabled actions — it's absent from the
+semantics tree until the stack is fully expanded), and the front card's own
+message content is capped at a standard visible height
+(`OneRingNotificationDimensions.collapsedCardMaxHeightFraction`, default
+`0.55` of the core overlay diameter) regardless of how long the message is —
+a long message is visually capped while collapsed, never left to grow the
+collapsed stack without bound. Expanding always reveals every card's full,
+uncapped content.
+
 ## Whole-feed scrolling
 
 The entire feed — every card — is **one** `LazyColumn`. There is no
@@ -210,7 +261,10 @@ logic.
 `OneRingNotificationHost` reuses the ring's own reduced-motion detection
 (the system "Remove animations" setting). With it on, the arrival sequence is
 skipped entirely (the feed just updates), and the visibility fade snaps
-instead of animating. Swipe-to-dismiss still works normally either way.
+instead of animating. Swipe-to-dismiss still works normally either way. A
+stack's own expand/collapse transition (`OneRingNotificationMotion.stackExpand`)
+follows the same rule — with animations off, it jumps directly to the
+collapsed/expanded endpoint with no intermediate frames.
 
 ## Library boundaries
 

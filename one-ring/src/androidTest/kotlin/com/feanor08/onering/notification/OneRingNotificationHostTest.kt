@@ -69,6 +69,12 @@ class OneRingNotificationHostTest {
             message = message,
         )
 
+    /** See [NotificationStackComposeTest.assertCardVisible] -- avoids the same card-vs-dismiss-button substring ambiguity. */
+    private fun assertCardVisible(substring: String) {
+        composeRule.onAllNodesWithContentDescription(substring, substring = true, useUnmergedTree = true)
+            .onFirst().assertExists()
+    }
+
     @Test
     fun aPostedNotificationRendersItsTitleAndMessage() {
         lateinit var state: OneRingNotificationState
@@ -358,5 +364,132 @@ class OneRingNotificationHostTest {
         composeRule.onAllNodesWithContentDescription("Adarsh", substring = true, useUnmergedTree = true)
             .assertCountEquals(0)
         assert(state.notifications.isEmpty())
+    }
+
+    // ---------------------------------------------------------------------
+    // Stack-aware extensions to arrival-safe update ordering
+    // (docs/notifications-plan.md section 16, "Extend host tests for").
+    // ---------------------------------------------------------------------
+
+    /** A message arriving on an already-expanded source's front thread must still obey splash-before-message ordering. */
+    @Test
+    fun anUpdateToAnExpandedSourcesFrontThreadIsNeverExposedBeforeItsArrivalSplash() {
+        lateinit var state: OneRingNotificationState
+        composeRule.setContent {
+            state = rememberOneRingNotificationState()
+            OneRingNotificationHost(state = state, visible = true, modifier = Modifier.size(300.dp))
+        }
+
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:adarsh", "whatsapp", "WhatsApp", "Adarsh", "hi"))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:varsha", "whatsapp", "WhatsApp", "Varsha", "hey"))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        // Expand the stack (front is Varsha).
+        composeRule.onNodeWithContentDescription("Varsha. WhatsApp. hey. WhatsApp · 2", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        assertCardVisible("Adarsh")
+
+        // A second message lands on the expanded front thread (Varsha).
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:varsha", "whatsapp", "WhatsApp", "Varsha", "still there?"))
+        }
+        composeRule.onAllNodesWithContentDescription("still there?", substring = true, useUnmergedTree = true)
+            .assertCountEquals(0)
+
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithContentDescription("still there?", substring = true, useUnmergedTree = true)
+            .onFirst().assertExists()
+        // Still expanded afterwards -- the update must not have reset expansion.
+        assertCardVisible("Adarsh")
+    }
+
+    /** A new post to an unrelated source must not disturb another source's expansion state. */
+    @Test
+    fun anUpdateToAnUnrelatedSourceDoesNotAffectAnotherSourcesExpansion() {
+        lateinit var state: OneRingNotificationState
+        composeRule.setContent {
+            state = rememberOneRingNotificationState()
+            OneRingNotificationHost(state = state, visible = true, modifier = Modifier.size(300.dp))
+        }
+
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:adarsh", "whatsapp", "WhatsApp", "Adarsh", "hi"))
+            state.post(post("whatsapp:varsha", "whatsapp", "WhatsApp", "Varsha", "hey"))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Varsha. WhatsApp. hey. WhatsApp · 2", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        assertCardVisible("Adarsh")
+
+        composeRule.runOnIdle {
+            state.post(post("software:update", "software", "Software", "Software Update", "v2.4 ready"))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        // The WhatsApp stack is still expanded; the unrelated Software card just appears alongside it.
+        assertCardVisible("Adarsh")
+        assertCardVisible("Software Update")
+    }
+
+    /** A source-count label ("WhatsApp · 2") must obey the same splash-before-reveal ordering as any other content. */
+    @Test
+    fun aSourceBecomingAStackNeverExposesItsCountLabelBeforeTheArrivalSplash() {
+        lateinit var state: OneRingNotificationState
+        composeRule.setContent {
+            state = rememberOneRingNotificationState()
+            OneRingNotificationHost(state = state, visible = true, modifier = Modifier.size(300.dp))
+        }
+
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:adarsh", "whatsapp", "WhatsApp", "Adarsh", "hi"))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        // A second thread arrives, turning this source into a 2-thread stack.
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:varsha", "whatsapp", "WhatsApp", "Varsha", "hey"))
+        }
+        composeRule.onAllNodesWithContentDescription("WhatsApp · 2", substring = true, useUnmergedTree = true)
+            .assertCountEquals(0)
+
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithContentDescription("WhatsApp · 2", substring = true, useUnmergedTree = true)
+            .onFirst().assertExists()
+    }
+
+    /** One [androidx.compose.foundation.lazy.LazyColumn] carries both plain and stacked sources -- there is no separate scroll container per group. */
+    @Test
+    fun oneScrollSurfaceReachesBothPlainAndStackedSources() {
+        lateinit var state: OneRingNotificationState
+        composeRule.setContent {
+            state = rememberOneRingNotificationState()
+            OneRingNotificationHost(state = state, visible = true, modifier = Modifier.size(200.dp))
+        }
+
+        composeRule.runOnIdle {
+            state.post(post("whatsapp:adarsh", "whatsapp", "WhatsApp", "Adarsh", "hi"))
+            state.post(post("whatsapp:varsha", "whatsapp", "WhatsApp", "Varsha", "hey"))
+            state.post(post("software:update", "software", "Software", "Software Update", "v2.4 ready"))
+            state.post(post("cloud:sync", "cloud", "Cloud", "Cloud Sync", "backed up"))
+        }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        // The oldest group (the WhatsApp stack) is still reachable by scrolling the one feed.
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Varsha"))
+        assertCardVisible("Varsha")
     }
 }

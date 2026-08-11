@@ -7,8 +7,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -48,9 +50,26 @@ class OneRingCoreOverlayIntegrationTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    // sourceKey is derived per-title (not a shared constant) so that tests
+    // posting more than one title -- see theOverlayRemainsFullyInteractiveWhileIdle
+    // -- get independent single-thread sources unless a test deliberately
+    // wants a multi-thread stack (which posts to the same threadKey/sourceKey
+    // explicitly instead of through this helper).
     private fun post(title: String) = OneRingNotificationPost(
         threadKey = "thread:$title",
-        sourceKey = "demo",
+        sourceKey = "demo:$title",
+        sourceLabel = "Demo",
+        sourceIcon = OneRingIcon.None,
+        icon = OneRingIcon.None,
+        accentColor = Color(0xFF56C985),
+        title = title,
+        message = "hi",
+    )
+
+    /** Two threads sharing one source, so they collapse into a [NotificationGroupSlot] stack. */
+    private fun postStackThread(title: String) = OneRingNotificationPost(
+        threadKey = "thread:$title",
+        sourceKey = "demo-stack",
         sourceLabel = "Demo",
         sourceIcon = OneRingIcon.None,
         icon = OneRingIcon.None,
@@ -65,6 +84,12 @@ class OneRingCoreOverlayIntegrationTest {
             composeRule.onAllNodesWithContentDescription("New notification:", substring = true)
                 .fetchSemanticsNodes().isEmpty()
         }
+    }
+
+    /** See [NotificationStackComposeTest.assertCardVisible] -- avoids the same card-vs-dismiss-button substring ambiguity. */
+    private fun assertCardVisible(substring: String) {
+        composeRule.onAllNodesWithContentDescription(substring, substring = true, useUnmergedTree = true)
+            .onFirst().assertExists()
     }
 
     /**
@@ -106,8 +131,8 @@ class OneRingCoreOverlayIntegrationTest {
      * the node that actually declared it, instead of only checking the
      * card's own local config.
      */
-    private fun cardIsInvisibleToUser(title: String, sourceLabel: String, message: String): Boolean {
-        val exactDescription = "$title. $sourceLabel. $message"
+    private fun cardIsInvisibleToUser(title: String, sourceLabel: String, message: String, stackLabel: String? = null): Boolean {
+        val exactDescription = "$title. $sourceLabel. $message" + (stackLabel?.let { ". $it" } ?: "")
         var node: SemanticsNode? = composeRule.onNodeWithContentDescription(exactDescription, useUnmergedTree = true)
             .fetchSemanticsNode()
         while (node != null) {
@@ -454,5 +479,155 @@ class OneRingCoreOverlayIntegrationTest {
         assert(seekValue != 0.2f) {
             "expected the drag inside the coreOverlay radius to change the seek value, stayed at $seekValue"
         }
+    }
+
+    /**
+     * A stack's tap-to-expand gesture lives entirely inside
+     * [OneRingNotificationHost]'s own pointer-input subtree (see
+     * [NotificationCard]'s unified gesture loop) -- it must never be
+     * mistaken for, or bleed into, a main-ring wedge press even though both
+     * sit at the same screen location.
+     */
+    @Test
+    fun tappingAStackToExpandItDoesNotCommitAnyRingWedge() {
+        var lastAction: String? = null
+        val items = listOf(OneRingItem.Action(id = "a", label = "A"))
+        lateinit var notifications: OneRingNotificationState
+
+        composeRule.setContent {
+            notifications = rememberOneRingNotificationState()
+            OneRing(
+                items = items,
+                onAction = { lastAction = it.id },
+                modifier = Modifier.size(300.dp),
+                coreOverlay = { OneRingNotificationHost(state = notifications) },
+            )
+        }
+
+        composeRule.runOnIdle { notifications.post(postStackThread("Adarsh")) }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { notifications.post(postStackThread("Varsha")) }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Varsha. Demo. hi. Demo · 2", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+
+        assertCardVisible("Adarsh")
+        assert(lastAction == null) { "expected the stack tap to never commit a ring wedge, got $lastAction" }
+    }
+
+    /**
+     * Stored expansion intent is host-owned (see
+     * [OneRingNotificationHost]'s "Stored intent" doc) and independent of
+     * `visible` -- opening and closing a submenu must not reset a stack the
+     * user had expanded.
+     */
+    @Test
+    fun stackExpansionSurvivesASubmenuHideAndRestore() {
+        val menuItems = listOf(
+            OneRingItem.Menu(
+                id = "menu",
+                label = "Menu",
+                children = listOf(OneRingItem.Action(id = "child", label = "Child")),
+            ),
+            OneRingItem.Action(id = "b", label = "B"),
+        )
+        lateinit var state: OneRingState
+        lateinit var notifications: OneRingNotificationState
+
+        composeRule.setContent {
+            state = rememberOneRingState()
+            notifications = rememberOneRingNotificationState()
+            OneRing(
+                items = menuItems,
+                onAction = {},
+                state = state,
+                modifier = Modifier.size(300.dp),
+                coreOverlay = { OneRingNotificationHost(state = notifications) },
+            )
+        }
+
+        composeRule.runOnIdle { notifications.post(postStackThread("Adarsh")) }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { notifications.post(postStackThread("Varsha")) }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Varsha. Demo. hi. Demo · 2", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        assertCardVisible("Adarsh")
+
+        composeRule.onNodeWithContentDescription("Menu").performClick()
+        composeRule.waitForIdle()
+        assert(state.mode == OneRingMode.Submenu) { "expected Submenu mode, was ${state.mode}" }
+        assert(cardIsInvisibleToUser("Varsha", "Demo", "hi", stackLabel = "Demo · 2")) {
+            "expected the stack hidden from accessibility while a submenu is open"
+        }
+
+        composeRule.onNodeWithContentDescription("Close Menu").performClick()
+        composeRule.waitForIdle()
+        assert(state.mode == OneRingMode.Idle) { "expected Idle after closing, was ${state.mode}" }
+
+        // Still expanded: the rear thread's own dismiss action is reachable again.
+        composeRule.onNodeWithContentDescription("Dismiss Adarsh notification", useUnmergedTree = true).assertExists()
+    }
+
+    /**
+     * An expanded stack behind a hidden `coreOverlay` must expose exactly as
+     * little accessibility surface as a plain single card does in the same
+     * state (see [theOverlayRemainsFullyInteractiveWhileIdle] and
+     * [enteringAMainSeekHidesTheOverlayAndExitingRestoresIt]) -- expansion
+     * must never widen what's reachable while hidden.
+     */
+    @Test
+    fun aHiddenExpandedStackExposesNoActionableInputOrSemantics() {
+        val seekItems = listOf(
+            OneRingItem.Seek(id = "vol", label = "Volume", value = 0.5f, onValueChange = {}),
+            OneRingItem.Action(id = "b", label = "B"),
+        )
+        lateinit var state: OneRingState
+        lateinit var notifications: OneRingNotificationState
+
+        composeRule.setContent {
+            state = rememberOneRingState()
+            notifications = rememberOneRingNotificationState()
+            OneRing(
+                items = seekItems,
+                onAction = {},
+                state = state,
+                modifier = Modifier.size(300.dp),
+                coreOverlay = { OneRingNotificationHost(state = notifications) },
+            )
+        }
+
+        composeRule.runOnIdle { notifications.post(postStackThread("Adarsh")) }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+        composeRule.runOnIdle { notifications.post(postStackThread("Varsha")) }
+        waitForArrivalToSettle()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Varsha. Demo. hi. Demo · 2", useUnmergedTree = true).performClick()
+        composeRule.waitForIdle()
+        assertCardVisible("Adarsh")
+
+        composeRule.onRoot().performTouchInput {
+            down(pointInWedge(index = 0, count = seekItems.size))
+            up()
+        }
+        composeRule.waitForIdle()
+        assert(state.mode == OneRingMode.Seek) { "expected Seek mode, was ${state.mode}" }
+
+        assert(cardIsInvisibleToUser("Varsha", "Demo", "hi", stackLabel = "Demo · 2")) {
+            "expected the front card hidden while a main seek is open"
+        }
+        assert(cardIsInvisibleToUser("Adarsh", "Demo", "hi")) { "expected the expanded rear card hidden while a main seek is open" }
+        composeRule.onAllNodesWithContentDescription("Dismiss Adarsh notification", useUnmergedTree = true)
+            .assertCountEquals(0)
+        composeRule.onAllNodesWithContentDescription("Dismiss Varsha notification", useUnmergedTree = true)
+            .assertCountEquals(0)
     }
 }

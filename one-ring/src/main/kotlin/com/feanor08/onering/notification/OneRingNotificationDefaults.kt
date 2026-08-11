@@ -2,6 +2,7 @@ package com.feanor08.onering.notification
 
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
@@ -65,6 +66,13 @@ public object OneRingNotificationDefaults {
         // gives a minimum height/width ratio of ~0.36, matching a wide
         // rectangular card rather than a square tile for short messages.
         minCardHeightFraction: Float = 0.32f,
+        // The collapsed endpoint's ceiling on the front card -- comfortably
+        // taller than minCardHeightFraction (title + subtitle + a couple of
+        // message lines), so a short message still looks natural while a
+        // long one is visually capped instead of growing the collapsed
+        // stack without bound. Expanding always shows the full message
+        // regardless of this value.
+        collapsedCardMaxHeightFraction: Float = 0.55f,
         cornerRadius: Dp = 14.dp,
         borderWidth: Dp = 2.dp,
         cardSpacing: Dp = 10.dp,
@@ -77,6 +85,7 @@ public object OneRingNotificationDefaults {
         edgeWidthReductionFraction = edgeWidthReductionFraction,
         edgeAlphaReductionFraction = edgeAlphaReductionFraction,
         minCardHeightFraction = minCardHeightFraction,
+        collapsedCardMaxHeightFraction = collapsedCardMaxHeightFraction,
         cornerRadius = cornerRadius,
         borderWidth = borderWidth,
         cardSpacing = cardSpacing,
@@ -97,6 +106,7 @@ public object OneRingNotificationDefaults {
         arrivalExitDurationMillis: Long = 340L,
         swipeSettle: AnimationSpec<Float> = tween(220, easing = EaseOutCubic),
         swipeDismiss: AnimationSpec<Float> = tween(180, easing = EaseOutCubic),
+        stackExpand: FiniteAnimationSpec<Float> = tween(260, easing = EaseOutCubic),
     ): OneRingNotificationMotion = OneRingNotificationMotion(
         visibilityFade = visibilityFade,
         arrivalGrow = arrivalGrow,
@@ -108,5 +118,6 @@ public object OneRingNotificationDefaults {
         arrivalExitDurationMillis = arrivalExitDurationMillis,
         swipeSettle = swipeSettle,
         swipeDismiss = swipeDismiss,
+        stackExpand = stackExpand,
     )
 }

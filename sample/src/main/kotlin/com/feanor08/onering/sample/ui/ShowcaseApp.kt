@@ -32,6 +32,7 @@ import com.feanor08.onering.sample.ui.demos.MotionDemo
 import com.feanor08.onering.sample.ui.demos.NestedDemo
 import com.feanor08.onering.sample.ui.demos.NestedGrowthDemo
 import com.feanor08.onering.sample.ui.demos.NotificationDemo
+import com.feanor08.onering.sample.ui.demos.NotificationStackStressDemo
 import com.feanor08.onering.sample.ui.demos.SeekDemo
 import com.feanor08.onering.sample.ui.demos.SmartHomeDemo
 import com.feanor08.onering.sample.ui.demos.StressTestDemo
@@ -85,6 +86,7 @@ private fun DemoHost(demo: Demo, onBack: () -> Unit) {
         Demo.NestedGrowth -> NestedGrowthDemo(onBack)
         Demo.Seek -> SeekDemo(onBack)
         Demo.Notifications -> NotificationDemo(onBack)
+        Demo.NotificationStackStress -> NotificationStackStressDemo(onBack)
         Demo.ItemCounts -> ItemCountDemo(onBack)
         Demo.Geometry -> GeometryDemo(onBack)
         Demo.Styling -> StylingDemo(onBack)

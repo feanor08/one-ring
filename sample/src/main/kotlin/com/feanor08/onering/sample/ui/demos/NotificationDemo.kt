@@ -126,7 +126,8 @@ fun NotificationDemo(onBack: () -> Unit) {
         title = Demo.Notifications.title,
         subtitle = "The feed lives in the ring's empty core (coreOverlay). Open Music or the Volume seek " +
             "and watch it fade out; it only returns once the main ring finishes settling back. Scroll to " +
-            "read older notifications; swipe a card left, or tap its X, to dismiss it.",
+            "read older notifications; swipe a card left, or tap its X, to dismiss it. Post two or more " +
+            "WhatsApp messages to see them collapse into a tappable stack.",
         onBack = onBack,
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {

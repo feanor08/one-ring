@@ -17,6 +17,11 @@ enum class Demo(val title: String, val summary: String) {
         "Notifications",
         "Center notification feed, source grouping, arrival animation, scrolling and dismiss gestures.",
     ),
+    NotificationStackStress(
+        "Notification Stack Stress",
+        "8-thread and 20-thread notification stacks, pre-loaded on open, for checking stack " +
+            "animation quality and frame smoothness at real scale.",
+    ),
     ItemCounts("Item Counts", "The geometry engine at 2 through 12 items -- proving it isn't hardcoded to six."),
     Geometry("Geometry", "Live sliders over every radius, angle, and spacing knob."),
     Styling("Styling", "Color presets and individual color overrides, all through the public style API."),

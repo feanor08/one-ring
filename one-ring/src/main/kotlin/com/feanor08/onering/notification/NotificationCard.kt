@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.feanor08.onering.internal.RenderIcon
@@ -80,6 +81,24 @@ internal fun displaySubtitle(notification: OneRingNotification): String {
  * scroll container here, so a card taller than the viewport simply extends
  * past it and is read by continuing to scroll the outer feed (see that
  * file's class doc).
+ *
+ * Also the sole building block of a multi-thread stack ([NotificationGroupSlot]
+ * per docs/notifications-plan.md) -- there is no separate rear-card
+ * component. Three additive, all-defaulted params make that possible without
+ * touching this card's existing rendering for every single-thread call site:
+ * [sourceStackLabel] (the `WhatsApp · 3` source-thread-count text, shown only
+ * on a stack's front card), [contentAlpha] (fades icon/title/messages/
+ * timestamp independently of the card's own surface -- see
+ * [contentRevealAlpha]), and [onTap] (the stack's expand/collapse gesture,
+ * folded into the same gesture loop as swipe -- see [swipeToDismissGesture]'s
+ * doc for why this isn't a second, competing tap detector).
+ *
+ * [interactive] now also gates the card's own accessibility semantics (see
+ * the `clearAndSetSemantics {}` branch below) -- previously this card always
+ * exposed its dismiss action regardless of [interactive], which meant a
+ * hidden/covered/collapsed-rear card could still be mutated via accessibility
+ * actions. A card that isn't interactive now has no semantics at all,
+ * matching [DismissButton]'s existing pattern.
  */
 @Composable
 internal fun NotificationCard(
@@ -88,6 +107,10 @@ internal fun NotificationCard(
     interactive: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    sourceStackLabel: String? = null,
+    contentAlpha: Float = 1f,
+    onTap: (() -> Unit)? = null,
+    tapAccessibilityLabel: String? = null,
 ) {
     val scope = rememberCoroutineScope()
     var offsetX by remember(notification.threadKey) { mutableFloatStateOf(0f) }
@@ -106,7 +129,7 @@ internal fun NotificationCard(
             // find -- see NotificationFeedList's class doc.
             .then(
                 if (interactive) {
-                    Modifier.pointerInput(notification.threadKey) {
+                    Modifier.pointerInput(notification.threadKey, onTap) {
                         swipeToDismissGesture(
                             widthPxProvider = { widthPx },
                             style = style,
@@ -114,6 +137,7 @@ internal fun NotificationCard(
                             currentOffset = { offsetX },
                             setOffset = { offsetX = it },
                             onDismiss = onDismiss,
+                            onTap = onTap,
                         )
                     }
                 } else {
@@ -132,17 +156,34 @@ internal fun NotificationCard(
                     append(subtitle)
                     append(". ")
                     append(notification.messages.joinToString(" "))
+                    sourceStackLabel?.let { append(". "); append(it) }
                 }
-                customActions = listOf(
-                    CustomAccessibilityAction(label = "Dismiss ${notification.title} notification") {
-                        onDismiss()
-                        true
-                    },
-                )
+                // Only the mutating/actionable pieces are gated by
+                // [interactive] -- a hidden, covered, or collapsed-rear card
+                // must not be reachable via accessibility actions, but its
+                // contentDescription must stay present: callers (and this
+                // module's own tests) locate a card by description first,
+                // then check *ancestor* InvisibleToUser to determine
+                // reachability, rather than the description's mere presence
+                // implying interactivity.
+                if (interactive) {
+                    customActions = listOf(
+                        CustomAccessibilityAction(label = "Dismiss ${notification.title} notification") {
+                            onDismiss()
+                            true
+                        },
+                    )
+                    if (onTap != null && tapAccessibilityLabel != null) {
+                        onClick(label = tapAccessibilityLabel) {
+                            onTap()
+                            true
+                        }
+                    }
+                }
             }
             .padding(horizontal = style.dimensions.horizontalContentPadding, vertical = 8.dp),
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = contentAlpha }) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -152,10 +193,27 @@ internal fun NotificationCard(
                     RenderIcon(icon = notification.icon, tint = notification.accentColor, size = CardIconSize)
                     Spacer(modifier = Modifier.width(CardIconSpacing))
                     Column(modifier = Modifier.weight(1f)) {
-                        BasicText(
-                            text = notification.title,
-                            style = TextStyle(color = style.colors.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
-                        )
+                        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
+                            // The title yields space to sourceStackLabel first (weight + ellipsis)
+                            // rather than both competing for room -- on a narrow card, a truncated
+                            // title beats a wrapped label colliding with the subtitle line below it.
+                            BasicText(
+                                text = notification.title,
+                                style = TextStyle(color = style.colors.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            sourceStackLabel?.let { label ->
+                                Spacer(modifier = Modifier.width(6.dp))
+                                BasicText(
+                                    text = label,
+                                    style = TextStyle(color = style.colors.secondaryText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                         BasicText(
                             text = subtitle,
                             style = TextStyle(color = notification.accentColor, fontSize = 12.sp),
@@ -221,7 +279,7 @@ private fun DismissButton(tint: Color, title: String, interactive: Boolean, onDi
 
 @Composable
 private fun DismissGlyph(tint: Color) {
-    Canvas(modifier = Modifier.size(14.dp)) {
+    Canvas(modifier = Modifier.size(7.dp)) {
         val stroke = size.minDimension * 0.14f
         drawLine(
             color = tint,
@@ -240,11 +298,28 @@ private fun DismissGlyph(tint: Color) {
     }
 }
 
+/** How long a press may last and still resolve as a tap, not an abandoned/long press. */
+private const val TAP_TIMEOUT_MILLIS = 500L
+
 /**
- * Swipe-left-to-dismiss with a directional lock against the enclosing
- * `LazyColumn`'s vertical scroll: horizontal movement is only claimed once it
- * clearly wins over vertical movement (see the threshold below). Matching
- * [com.feanor08.onering.internal.RingInteractionController]'s
+ * One unified low-level gesture loop -- swipe-left-to-dismiss *and*, when
+ * [onTap] is non-null, tap-to-expand/collapse -- rather than two competing
+ * detectors on the same node. A second `pointerInput`/`detectTapGestures`
+ * alongside this one would both see the same down event and race for it;
+ * folding tap recognition into this loop's own state machine means there is
+ * exactly one detector, so there is no arbitration problem to solve (see
+ * docs/notifications-plan.md section 11).
+ *
+ * The loop already resolves into one of three outcomes on release: locked
+ * horizontal (swipe, possibly past the dismiss threshold), settled-out
+ * vertical (handed off to the enclosing scroll, [onTap] never fires), or
+ * neither -- and "neither" is precisely a tap: the pointer never crossed
+ * either directional lock, stayed within touch slop, and released within
+ * [TAP_TIMEOUT_MILLIS]. A resolved rightward/diagonal drag, a cancelled
+ * gesture, or a multi-pointer gesture is not a tap either -- all of those
+ * either lock a direction above or fall outside the slop/timeout bounds.
+ *
+ * Matches [com.feanor08.onering.internal.RingInteractionController]'s
  * `awaitEachGesture`-based approach rather than Foundation's swipe-to-dismiss
  * (which would pull in a Material dependency this module deliberately
  * doesn't have -- see docs/notifications.md).
@@ -262,6 +337,7 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
     currentOffset: () -> Float,
     setOffset: (Float) -> Unit,
     onDismiss: () -> Unit,
+    onTap: (() -> Unit)? = null,
 ) {
     val touchSlop = viewConfiguration.touchSlop
     awaitEachGesture {
@@ -270,8 +346,10 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
         var settledOut = false
         var totalDx = 0f
         var totalDy = 0f
+        var multiPointer = false
         while (true) {
             val event = awaitPointerEvent()
+            if (event.changes.size > 1) multiPointer = true
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
             if (!change.pressed) {
                 if (locked) {
@@ -292,6 +370,15 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
                             }
                         }
                     }
+                } else if (
+                    onTap != null &&
+                    !settledOut &&
+                    !multiPointer &&
+                    abs(totalDx) <= touchSlop &&
+                    abs(totalDy) <= touchSlop &&
+                    (change.uptimeMillis - down.uptimeMillis) <= TAP_TIMEOUT_MILLIS
+                ) {
+                    onTap()
                 }
                 break
             }

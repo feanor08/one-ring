@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -16,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 
@@ -63,13 +63,16 @@ internal fun NotificationFeedList(
     style: OneRingNotificationStyle,
     coreOverlayDiameterPx: Float,
     interactive: Boolean,
+    expandedSourceKey: String?,
     onDismiss: (String) -> Unit,
+    onToggleExpanded: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
 
     val maxCardWidthDp = with(density) { (coreOverlayDiameterPx * style.dimensions.maxCardWidthFraction).toDp() }
     val minCardHeightDp = with(density) { (coreOverlayDiameterPx * style.dimensions.minCardHeightFraction).toDp() }
+    val collapsedCardMaxHeightDp = with(density) { (coreOverlayDiameterPx * style.dimensions.collapsedCardMaxHeightFraction).toDp() }
     val topPaddingDp = with(density) { (coreOverlayDiameterPx * style.dimensions.topContentPaddingFraction).toDp() }
     val bottomPaddingDp = with(density) { (coreOverlayDiameterPx * style.dimensions.bottomContentPaddingFraction).toDp() }
 
@@ -82,25 +85,28 @@ internal fun NotificationFeedList(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             groups.forEachIndexed { groupIndex, group ->
-                group.threads.forEachIndexed { threadIndex, thread ->
-                    item(key = thread.threadKey) {
-                        val topSpacing = when {
-                            groupIndex == 0 && threadIndex == 0 -> 0.dp
-                            threadIndex == 0 -> style.dimensions.groupSpacing
-                            else -> style.dimensions.cardSpacing
-                        }
-                        NotificationCard(
-                            notification = thread,
-                            style = style,
-                            interactive = true,
-                            onDismiss = { onDismiss(thread.threadKey) },
-                            modifier = Modifier
-                                .width(maxCardWidthDp)
-                                .heightIn(min = minCardHeightDp)
-                                .circleEdgeGraphicsLayer(listState, thread.threadKey, style.dimensions)
-                                .padding(top = topSpacing),
-                        )
+                val itemKey = "group:${group.sourceKey}"
+                item(key = itemKey) {
+                    val topSpacing = if (groupIndex == 0) 0.dp else style.dimensions.groupSpacing
+                    val edgeTransformLookup = GroupEdgeTransformLookup {
+                        val layoutInfo = listState.layoutInfo
+                        val itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == itemKey }
+                        val viewportCenterPx = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2f
+                        itemInfo?.let { GroupEdgeTransformFrame(it.offset.toFloat(), it.size.toFloat(), viewportCenterPx) }
                     }
+                    SourceGroupContent(
+                        group = group,
+                        style = style,
+                        maxCardWidthDp = maxCardWidthDp,
+                        minCardHeightDp = minCardHeightDp,
+                        collapsedCardMaxHeightDp = collapsedCardMaxHeightDp,
+                        interactive = true,
+                        expandedSourceKey = expandedSourceKey,
+                        onDismiss = onDismiss,
+                        onToggleExpanded = onToggleExpanded,
+                        edgeTransformLookup = edgeTransformLookup,
+                        modifier = Modifier.padding(top = topSpacing),
+                    )
                 }
             }
         }
@@ -110,48 +116,95 @@ internal fun NotificationFeedList(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             groups.forEachIndexed { groupIndex, group ->
-                group.threads.forEachIndexed { threadIndex, thread ->
-                    val topSpacing = when {
-                        groupIndex == 0 && threadIndex == 0 -> 0.dp
-                        threadIndex == 0 -> style.dimensions.groupSpacing
-                        else -> style.dimensions.cardSpacing
-                    }
-                    NotificationCard(
-                        notification = thread,
-                        style = style,
-                        interactive = false,
-                        onDismiss = { onDismiss(thread.threadKey) },
-                        modifier = Modifier
-                            .width(maxCardWidthDp)
-                            .heightIn(min = minCardHeightDp)
-                            .padding(top = topSpacing),
-                    )
-                }
+                val topSpacing = if (groupIndex == 0) 0.dp else style.dimensions.groupSpacing
+                SourceGroupContent(
+                    group = group,
+                    style = style,
+                    maxCardWidthDp = maxCardWidthDp,
+                    minCardHeightDp = minCardHeightDp,
+                    collapsedCardMaxHeightDp = collapsedCardMaxHeightDp,
+                    interactive = false,
+                    expandedSourceKey = expandedSourceKey,
+                    onDismiss = onDismiss,
+                    onToggleExpanded = onToggleExpanded,
+                    edgeTransformLookup = null,
+                    modifier = Modifier.padding(top = topSpacing),
+                )
             }
         }
     }
 }
 
 /**
+ * One source group, rendered by the exact same rule regardless of which
+ * branch above is active: a single active thread is a plain [NotificationCard];
+ * two or more is the persistent [NotificationGroupSlot]. Both branches must
+ * agree on this so a source's presentation doesn't change shape merely
+ * because the feed became hidden/covered (see docs/notifications-plan.md
+ * section 2, "existing presentation and integration").
+ */
+@Composable
+private fun SourceGroupContent(
+    group: OneRingNotificationGroup,
+    style: OneRingNotificationStyle,
+    maxCardWidthDp: Dp,
+    minCardHeightDp: Dp,
+    collapsedCardMaxHeightDp: Dp,
+    interactive: Boolean,
+    expandedSourceKey: String?,
+    onDismiss: (String) -> Unit,
+    onToggleExpanded: (String) -> Unit,
+    edgeTransformLookup: GroupEdgeTransformLookup?,
+    modifier: Modifier = Modifier,
+) {
+    when (stackDecision(group.threads.size)) {
+        StackDecision.Single -> {
+            val thread = group.threads.first()
+            NotificationCard(
+                notification = thread,
+                style = style,
+                interactive = interactive,
+                onDismiss = { onDismiss(thread.threadKey) },
+                modifier = modifier
+                    .width(maxCardWidthDp)
+                    .heightIn(min = minCardHeightDp)
+                    .circleEdgeGraphicsLayer(edgeTransformLookup, style.dimensions),
+            )
+        }
+        StackDecision.Group -> {
+            NotificationGroupSlot(
+                group = group,
+                style = style,
+                maxCardWidthDp = maxCardWidthDp,
+                minCardHeightDp = minCardHeightDp,
+                collapsedCardMaxHeightDp = collapsedCardMaxHeightDp,
+                interactive = interactive,
+                expanded = expandedSourceKey == group.sourceKey,
+                onDismiss = onDismiss,
+                onToggleExpanded = { onToggleExpanded(group.sourceKey) },
+                edgeTransformLookup = edgeTransformLookup,
+                modifier = modifier,
+            )
+        }
+    }
+}
+
+/**
  * Applies [circleEdgeTransform] as a deferred `graphicsLayer` read of
- * [listState]'s current layout for the item identified by [key] -- see this
- * file's class doc for why this specific mechanism (rather than a
- * recomposition-driven one) is what keeps scrolling smooth.
+ * [lookup]'s current frame -- see this file's class doc for why this
+ * specific mechanism (rather than a recomposition-driven one) is what keeps
+ * scrolling smooth. Null (the non-interactive branch, or before this item's
+ * first layout pass) renders with no edge treatment.
  */
 private fun Modifier.circleEdgeGraphicsLayer(
-    listState: LazyListState,
-    key: Any,
+    lookup: GroupEdgeTransformLookup?,
     dimensions: OneRingNotificationDimensions,
 ): Modifier = this.graphicsLayer {
-    val layoutInfo = listState.layoutInfo
-    val itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }
-    val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).toFloat()
-    if (itemInfo != null && viewportHeight > 0f) {
-        val viewportCenter = viewportHeight / 2f
-        val itemCenter = itemInfo.offset + itemInfo.size / 2f
-        val distanceFraction = abs(itemCenter - viewportCenter) / viewportCenter
-        val transform = circleEdgeTransform(distanceFraction, dimensions)
-        scaleX = transform.scaleX
-        alpha = transform.alpha
-    }
+    val frame = lookup?.current() ?: return@graphicsLayer
+    if (frame.viewportCenterPx <= 0f) return@graphicsLayer
+    val itemCenterPx = frame.groupItemOffsetPx + frame.itemSizePx / 2f
+    val distanceFraction = abs(itemCenterPx - frame.viewportCenterPx) / frame.viewportCenterPx
+    val transform = circleEdgeTransform(distanceFraction, dimensions)
+    scaleX = transform.scaleX
+    alpha = transform.alpha
 }
