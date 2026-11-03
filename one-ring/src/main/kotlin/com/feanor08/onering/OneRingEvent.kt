@@ -16,6 +16,13 @@ public sealed interface OneRingEvent {
     @Immutable
     public data class ActionCommitted(public val itemId: String) : OneRingEvent
 
+    /**
+     * A hold-to-commit wedge ([OneRingItem.Action.holdMs] > 0) was let go of, or slid off, before its fill
+     * completed. Nothing was committed. [heldMs] is how long it was held.
+     */
+    @Immutable
+    public data class HoldCancelled(public val itemId: String, public val heldMs: Long) : OneRingEvent
+
     @Immutable
     public data class MenuOpened(public val itemId: String) : OneRingEvent
 

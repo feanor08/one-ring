@@ -32,4 +32,7 @@ internal class ItemAnimation {
     val contentAlpha = Animatable(1f)
     val iconAlpha = Animatable(1f)
     val backIconAlpha = Animatable(0f)
+
+    /** 0..1 progress of a hold-to-commit wedge's fill ([com.feanor08.onering.OneRingItem.Action.holdMs]). */
+    val holdProgress = Animatable(0f)
 }

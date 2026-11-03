@@ -2,6 +2,8 @@ package com.feanor08.onering.internal
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.geometry.Offset
@@ -21,6 +23,7 @@ import com.feanor08.onering.geometry.angleOfOffset
 import com.feanor08.onering.style.OneRingBehavior
 import com.feanor08.onering.style.OneRingDimensions
 import com.feanor08.onering.style.OneRingMotion
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
@@ -75,6 +78,13 @@ internal class RingInteractionController(private val state: OneRingState) {
     private var onEvent: ((OneRingEvent) -> Unit)? = null
     private var hasCoreOverlay: Boolean = false
 
+    // Hold-to-commit (OneRingItem.Action.holdMs > 0): the wedge being held, when the hold began, and the wedge
+    // whose hold already fired in this gesture (it does not restart, and the release commits nothing more).
+    private var holdJob: Job? = null
+    private var holdId: String? = null
+    private var holdStartedAtMs: Long = 0L
+    private var holdFiredId: String? = null
+
     fun update(
         items: List<OneRingItem>,
         resolved: ResolvedRing,
@@ -95,6 +105,56 @@ internal class RingInteractionController(private val state: OneRingState) {
         this.onAction = onAction
         this.onEvent = onEvent
         this.hasCoreOverlay = hasCoreOverlay
+        // A held wedge that has left the item list (or lost its hold) must not go on filling.
+        holdId?.let { held -> if (holdActionFor(held) == null) cancelHold(held) }
+    }
+
+    /** The enabled hold-to-commit action [id] names, in the main ring or the open submenu; null for anything else. */
+    private fun holdActionFor(id: String?): OneRingItem.Action? {
+        if (id == null) return null
+        val pool = if (state.path.isEmpty()) items else currentSubmenu(items, state.path)?.second.orEmpty()
+        return (pool.firstOrNull { it.id == id } as? OneRingItem.Action)?.takeIf { it.enabled && it.holdMs > 0L }
+    }
+
+    private fun startHold(item: OneRingItem.Action) {
+        holdId = item.id
+        holdStartedAtMs = System.currentTimeMillis()
+        holdJob?.cancel()
+        val progress = state.animations.of(item.id).holdProgress
+        holdJob = state.scope.launch {
+            progress.snapTo(0f)
+            progress.animateTo(1f, tween(item.holdMs.toInt(), easing = LinearEasing))
+            fireHeld(item)
+        }
+    }
+
+    /** The pointer left [id] (or let go) before its fill completed. */
+    private fun cancelHold(id: String) {
+        holdJob?.cancel()
+        holdJob = null
+        if (holdId == id) {
+            holdId = null
+            onEvent?.invoke(OneRingEvent.HoldCancelled(id, System.currentTimeMillis() - holdStartedAtMs))
+        }
+        state.scope.launch { state.animations.of(id).holdProgress.animateTo(0f, tween(140)) }
+    }
+
+    /** The fill completed with the pointer still on the wedge: commit it, once per gesture. */
+    private fun fireHeld(item: OneRingItem.Action) {
+        holdId = null
+        holdJob = null
+        holdFiredId = item.id
+        val submenuParent = if (state.path.isEmpty()) null else currentSubmenu(items, state.path)?.first
+        commitAction(item)
+        if (submenuParent != null && item.enabled) beginClose(submenuParent.id)
+    }
+
+    /** The gesture ended: clear the "already fired" latch and let a completed fill drain away. */
+    private fun endHoldGesture() {
+        holdFiredId?.let { fired ->
+            holdFiredId = null
+            state.scope.launch { state.animations.of(fired).holdProgress.animateTo(0f, tween(220)) }
+        }
     }
 
     private fun haptic(event: OneRingHapticEvent) {
@@ -116,6 +176,8 @@ internal class RingInteractionController(private val state: OneRingState) {
         state.highlightedId = id
         onEvent?.invoke(OneRingEvent.HighlightChanged(id))
         if (!mute) haptic(OneRingHapticEvent.HighlightChanged)
+        previous?.takeIf { it == holdId }?.let { cancelHold(it) }
+        if (id != null && id != holdFiredId) holdActionFor(id)?.let { startHold(it) }
         val hoverSpec = motion?.hover ?: return
 
         // The current back control already sits at its expanded geometry; hover
@@ -210,6 +272,13 @@ internal class RingInteractionController(private val state: OneRingState) {
      */
     fun commitDirectly(id: String) {
         if (state.phase != OneRingState.Phase.Settled) return
+        // An accessibility activation cannot hold: a hold-to-commit action commits at once.
+        holdActionFor(id)?.let { held ->
+            val parent = if (state.path.isEmpty()) null else currentSubmenu(items, state.path)?.first
+            commitAction(held)
+            if (parent != null) beginClose(parent.id)
+            return
+        }
         setHighlight(id)
         commit()
     }
@@ -223,6 +292,9 @@ internal class RingInteractionController(private val state: OneRingState) {
     private fun commit() {
         val id = state.highlightedId ?: return
         setHighlight(null, mute = true)
+        // A hold-to-commit wedge commits only when its fill completes: a release before that (setHighlight above
+        // cancelled it) commits nothing, and one after it has already fired.
+        if (id == holdFiredId || holdActionFor(id) != null) return
         val session = state.seekSession
         when {
             state.path.isNotEmpty() && id == state.path.last() -> beginClose(id)
@@ -616,6 +688,8 @@ internal class RingInteractionController(private val state: OneRingState) {
             }
         } finally {
             state.touching = false
+            holdId?.let { cancelHold(it) }
+            endHoldGesture()
         }
     }
 

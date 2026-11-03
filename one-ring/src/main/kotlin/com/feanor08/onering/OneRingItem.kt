@@ -35,7 +35,15 @@ public sealed interface OneRingItem {
      */
     public val weight: Float
 
-    /** A leaf item that fires [OneRing]'s onAction callback when committed. */
+    /**
+     * A leaf item that fires [OneRing]'s onAction callback when committed.
+     *
+     * [holdMs] > 0 makes it a hold-to-commit wedge: releasing on it does NOT commit. Instead, while the
+     * pointer stays on the wedge, a fill grows through it from the inner edge to the outer edge over [holdMs],
+     * and the action fires when the fill completes. Letting go (or sliding off) first cancels it and raises
+     * [OneRingEvent.HoldCancelled]. Meant for actions too consequential for a tap. Semantics (TalkBack)
+     * activation commits at once, since an accessibility service cannot hold.
+     */
     @Immutable
     public data class Action(
         override val id: String,
@@ -45,9 +53,11 @@ public sealed interface OneRingItem {
         override val contentDescription: String? = null,
         public val payload: Any? = null,
         override val weight: Float = 1f,
+        public val holdMs: Long = 0L,
     ) : OneRingItem {
         init {
             requireValidWeight(id, weight)
+            require(holdMs >= 0L) { "OneRingItem '$id' has holdMs=$holdMs; it must be >= 0 (0 = release-to-commit)." }
         }
     }
 

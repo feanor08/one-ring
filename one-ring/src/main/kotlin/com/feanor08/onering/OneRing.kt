@@ -188,6 +188,37 @@ public fun OneRing(
                 frame = frame.copy(arcs = frame.arcs + submenuArcs)
             }
 
+            // Hold-to-commit fills sit above the wedges (the icons are a layer above the canvas).
+            val holdProgressOf = { itemId: String -> state.animations.of(itemId).holdProgress.value }
+            if (submenu == null) {
+                frame = frame.copy(
+                    arcs = frame.arcs + RingFrameBuilder.buildHoldFills(
+                        items = items,
+                        spans = resolved.mainSpans,
+                        innerRadiusPx = resolved.mainInnerPx,
+                        colors = style.colors,
+                        expansionOf = expansionOf,
+                        alphaOf = alphaOf,
+                        progressOf = holdProgressOf,
+                        outerRadiusFor = { expansion -> resolved.mainOuterFor(expansion) },
+                    ),
+                )
+            } else if (parentSpan != null) {
+                val children = submenu.second
+                frame = frame.copy(
+                    arcs = frame.arcs + RingFrameBuilder.buildHoldFills(
+                        items = children,
+                        spans = submenuChildSpans(resolved, style.dimensions, parentSpan, children),
+                        innerRadiusPx = resolved.submenuInnerPx,
+                        colors = style.colors,
+                        expansionOf = expansionOf,
+                        alphaOf = alphaOf,
+                        progressOf = holdProgressOf,
+                        outerRadiusFor = { expansion -> resolved.submenuOuterFor(expansion.coerceIn(0f, 1f)) },
+                    ),
+                )
+            }
+
             if (seekSession != null) {
                 val seekBand = if (state.path.isEmpty()) {
                     resolved.mainBand

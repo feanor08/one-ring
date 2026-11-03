@@ -152,6 +152,37 @@ internal object RingFrameBuilder {
         )
     }
 
+    /**
+     * The fill of every hold-to-commit wedge ([OneRingItem.Action.holdMs] > 0) that has started to fill: the
+     * wedge's own span, from its inner edge outwards to [progressOf] of the way to its current outer edge. Drawn
+     * above the ring's arcs and below its icons.
+     */
+    fun buildHoldFills(
+        items: List<OneRingItem>,
+        spans: List<AngularSpan>,
+        innerRadiusPx: Float,
+        colors: OneRingColors,
+        expansionOf: (itemId: String) -> Float,
+        alphaOf: (itemId: String) -> Float,
+        progressOf: (itemId: String) -> Float,
+        outerRadiusFor: (expansion: Float) -> Float,
+    ): List<ArcVisual> = items.mapIndexedNotNull { index, item ->
+        if (item !is OneRingItem.Action || item.holdMs <= 0L) return@mapIndexedNotNull null
+        val progress = progressOf(item.id).coerceIn(0f, 1f)
+        if (progress <= 0f) return@mapIndexedNotNull null
+        val span = spans.getOrNull(index) ?: return@mapIndexedNotNull null
+        val outerPx = outerRadiusFor(expansionOf(item.id)).coerceAtLeast(innerRadiusPx)
+        ArcVisual(
+            itemIndex = index,
+            span = span,
+            band = RadialBand(innerRadiusPx, lerp(innerRadiusPx, outerPx, progress)),
+            fill = colors.seekProgress,
+            stroke = colors.seekProgress,
+            strokeWidthPx = 0f,
+            alpha = alphaOf(item.id).coerceIn(0f, 1f),
+        )
+    }
+
     private inline fun buildArcs(
         items: List<OneRingItem>,
         spans: List<AngularSpan>,

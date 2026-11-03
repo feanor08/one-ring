@@ -21,8 +21,9 @@ public class OneRingItemsScope internal constructor() {
         contentDescription: String? = null,
         payload: Any? = null,
         weight: Float = 1f,
+        holdMs: Long = 0L,
     ) {
-        items += OneRingItem.Action(id, label, icon, enabled, contentDescription, payload, weight)
+        items += OneRingItem.Action(id, label, icon, enabled, contentDescription, payload, weight, holdMs)
     }
 
     public fun menu(
