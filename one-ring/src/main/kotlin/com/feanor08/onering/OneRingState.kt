@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import com.feanor08.onering.geometry.SeekTrack
 import com.feanor08.onering.internal.RingAnimations
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.Job
 
 /** The ring's current interaction mode. */
@@ -75,6 +76,35 @@ public class OneRingState internal constructor(initialPath: List<String>) {
     internal val mainSiblingReveal: Animatable<Float, *> = Animatable(1f)
 
     internal lateinit var scope: CoroutineScope
+
+    internal sealed interface Request {
+        data class Commit(val itemId: String) : Request
+        object Close : Request
+        data class Highlight(val itemId: String?) : Request
+    }
+
+    internal val requests = MutableSharedFlow<Request>(extraBufferCapacity = 16)
+
+    /**
+     * Commits [itemId] as if it had been highlighted and released (opens a menu, runs an action, toggles). For a
+     * hold-to-commit action it commits at once: a switch or a voice command cannot hold. Ignored mid-transition.
+     */
+    public fun commit(itemId: String) {
+        requests.tryEmit(Request.Commit(itemId))
+    }
+
+    /** Closes the open submenu or seek, as the close control would. Ignored when nothing is open or mid-transition. */
+    public fun close() {
+        requests.tryEmit(Request.Close)
+    }
+
+    /**
+     * Highlights [itemId] (null clears it), as a pointer resting on it would; for a switch-driven selection. Ignored while a
+     * finger is on the ring or mid-transition. Highlighting a hold-to-commit action starts its hold.
+     */
+    public fun highlight(itemId: String?) {
+        requests.tryEmit(Request.Highlight(itemId))
+    }
 
     /** Input is gated to nothing but a fresh down while any phase other than [Settled] is active. */
     internal sealed interface Phase {

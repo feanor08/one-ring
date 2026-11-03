@@ -126,6 +126,18 @@ public fun OneRing(
             hasCoreOverlay = coreOverlay != null,
         )
 
+        // Programmatic commit / close / highlight (OneRingState.commit etc.), run by the same controller the pointer uses.
+        LaunchedEffect(state, controller) {
+            state.requests.collect { request ->
+                if (state.phase != OneRingState.Phase.Settled || state.touching) return@collect
+                when (request) {
+                    is OneRingState.Request.Commit -> controller.commitDirectly(request.itemId)
+                    OneRingState.Request.Close -> controller.closeDirectly()
+                    is OneRingState.Request.Highlight -> controller.highlightDirectly(request.itemId)
+                }
+            }
+        }
+
         LaunchedEffect(items.size, resolved) {
             warnIfTargetsTooSmall(resolved, items.size, minTouchPx = with(density) { 48.dp.toPx() })
         }

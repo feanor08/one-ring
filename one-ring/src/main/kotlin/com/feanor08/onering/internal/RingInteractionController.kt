@@ -265,6 +265,12 @@ internal class RingInteractionController(private val state: OneRingState) {
         if (state.path.isEmpty()) beginCloseMainSeek(targetId) else beginClose(targetId)
     }
 
+    /** Highlights [id] (or clears it) for a switch-driven selection; see [OneRingState.highlight]. */
+    fun highlightDirectly(id: String?) {
+        if (state.phase != OneRingState.Phase.Settled) return
+        setHighlight(id)
+    }
+
     /**
      * Directly commits [id] as if it had been highlighted and released -- for
      * the semantics layer. Gated mid-transition for the same reason as
