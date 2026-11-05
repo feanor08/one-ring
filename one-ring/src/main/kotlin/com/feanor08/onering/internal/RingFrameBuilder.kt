@@ -1,6 +1,7 @@
 package com.feanor08.onering.internal
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.lerp as lerpColor
 import com.feanor08.onering.OneRingItem
 import com.feanor08.onering.geometry.AngularSpan
 import com.feanor08.onering.geometry.RadialBand
@@ -34,6 +35,10 @@ internal object RingFrameBuilder {
         // continuous expansion, exactly as before this parameter existed.
         mainSiblingRevealProgress: Float = 1f,
         activeItemId: String? = null,
+        // A OneRingItem.Toggle's 0 (off) .. 1 (on) resting-state progress --
+        // see ItemAnimation.toggleProgress. Irrelevant for every other item
+        // type, so a default is fine for every existing caller/test.
+        toggleProgressOf: (itemId: String) -> Float = { 0f },
     ): RingFrame {
         val arcs = buildArcs(
             items = items,
@@ -44,9 +49,10 @@ internal object RingFrameBuilder {
             expansionOf = expansionOf,
             alphaOf = alphaOf,
             highlightedId = highlightedId,
-            outerRadiusFor = { expansion -> resolved.mainOuterFor(expansion) },
+            outerRadiusFor = { expansion, toggleProgress -> resolved.mainOuterFor(expansion, toggleProgress) },
             siblingRevealProgress = mainSiblingRevealProgress,
             activeItemId = activeItemId,
+            toggleProgressOf = toggleProgressOf,
         )
 
         val centerCircle = CircleVisual(
@@ -79,6 +85,7 @@ internal object RingFrameBuilder {
         expansionOf: (itemId: String) -> Float,
         alphaOf: (itemId: String) -> Float = { 1f },
         highlightedId: String? = null,
+        toggleProgressOf: (itemId: String) -> Float = { 0f },
     ): List<ArcVisual> {
         val childSpans = submenuChildSpans(resolved, dimensions, parentSpan, children)
         val clampedReveal = reveal.coerceIn(0f, 1f)
@@ -93,7 +100,8 @@ internal object RingFrameBuilder {
             expansionOf = expansionOf,
             alphaOf = { id -> clampedReveal * alphaOf(id) },
             highlightedId = highlightedId,
-            outerRadiusFor = { expansion -> resolved.submenuOuterFor(expansion) },
+            outerRadiusFor = { expansion, toggleProgress -> resolved.submenuOuterFor(expansion, toggleProgress) },
+            toggleProgressOf = toggleProgressOf,
         )
     }
 
@@ -192,9 +200,10 @@ internal object RingFrameBuilder {
         expansionOf: (itemId: String) -> Float,
         alphaOf: (itemId: String) -> Float,
         highlightedId: String?,
-        outerRadiusFor: (expansion: Float) -> Float,
+        outerRadiusFor: (expansion: Float, toggleProgress: Float?) -> Float,
         siblingRevealProgress: Float = 1f,
         activeItemId: String? = null,
+        toggleProgressOf: (itemId: String) -> Float = { 0f },
     ): List<ArcVisual> = items.mapIndexedNotNull { index, item ->
         val span = spans.getOrNull(index) ?: return@mapIndexedNotNull null
         val expansion = expansionOf(item.id)
@@ -204,14 +213,24 @@ internal object RingFrameBuilder {
         // as if it were still mid-selection. Geometry and highlight are separate
         // concerns: the wedge can stay expanded and still look at rest.
         val highlighted = highlightedId != null && item.id == highlightedId
+        val toggleProgress = if (item is OneRingItem.Toggle) toggleProgressOf(item.id).coerceIn(0f, 1f) else null
         val fill = when {
             !item.enabled -> colors.sectorDisabled
+            // Boolean state is fill tint + radial height, never border color
+            // (stroke below is untouched by toggleProgress) -- see
+            // docs/... the ring's own house style already keeps structural/
+            // accent color separate the same way expansion/highlighted are.
+            toggleProgress != null -> lerpColor(
+                if (highlighted) colors.sectorToggleOffHighlighted else colors.sectorToggleOff,
+                if (highlighted) colors.sectorToggleOnHighlighted else colors.sectorToggleOn,
+                toggleProgress,
+            )
             highlighted -> colors.sectorHighlighted
             index % 2 == 0 -> colors.sector
             else -> colors.sectorAlternate
         }
         val stroke = if (highlighted) colors.strokeHighlighted else colors.stroke
-        val rawOuterPx = outerRadiusFor(expansion)
+        val rawOuterPx = outerRadiusFor(expansion, toggleProgress)
         // The active item (an open menu's parent, or an active main seek) is
         // never subject to the shared sibling reveal -- its radius is purely a
         // function of its own continuous expansion. Every other item lerps
@@ -231,6 +250,7 @@ internal object RingFrameBuilder {
             stroke = stroke,
             strokeWidthPx = resolved.sectorStrokeWidthPx,
             alpha = alphaOf(item.id),
+            isHighlighted = highlighted,
         )
     }
 }

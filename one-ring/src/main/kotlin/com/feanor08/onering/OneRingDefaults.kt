@@ -27,6 +27,15 @@ public object OneRingDefaults {
     /** Cubic-bezier matching the prototype's `1 - (1-t)^3` ease-out-cubic transitions. */
     private val EaseOutCubic: CubicBezierEasing = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)
 
+    /**
+     * A soft, symmetric ease-in-out: zero velocity at both the start and the
+     * end, unlike [EaseOutCubic] (fast start). Used for
+     * [OneRingMotion.toggleFlip], where the motion should read as one
+     * deliberate, restrained state change rather than a snappy commit --
+     * never springy/bouncy, smooth at both endpoints.
+     */
+    private val EaseInOutCubic: CubicBezierEasing = CubicBezierEasing(0.45f, 0f, 0.55f, 1f)
+
     public fun style(
         colors: OneRingColors = colors(),
         dimensions: OneRingDimensions = dimensions(),
@@ -40,6 +49,14 @@ public object OneRingDefaults {
         sectorHighlighted: Color = Color(0xFF356FA2),
         sectorSelected: Color = sectorHighlighted,
         sectorDisabled: Color = Color(0xFF2A2A2A),
+        // Muted, desaturated red/green sitting at the same darkness as
+        // `sector`/`sectorAlternate` -- deliberately not alarm-red or
+        // success-toast green, so a toggle wedge still reads as part of the
+        // same neutral ring rather than an error/status indicator.
+        sectorToggleOff: Color = Color(0xFF4A3236),
+        sectorToggleOffHighlighted: Color = Color(0xFF5C3E43),
+        sectorToggleOn: Color = Color(0xFF2E4A3B),
+        sectorToggleOnHighlighted: Color = Color(0xFF3A5C49),
         stroke: Color = Color(0xFF1B1B1B),
         strokeHighlighted: Color = Color(0xFF5AA9FF),
         content: Color = Color.White,
@@ -56,6 +73,10 @@ public object OneRingDefaults {
         sectorHighlighted = sectorHighlighted,
         sectorSelected = sectorSelected,
         sectorDisabled = sectorDisabled,
+        sectorToggleOff = sectorToggleOff,
+        sectorToggleOffHighlighted = sectorToggleOffHighlighted,
+        sectorToggleOn = sectorToggleOn,
+        sectorToggleOnHighlighted = sectorToggleOnHighlighted,
         stroke = stroke,
         strokeHighlighted = strokeHighlighted,
         content = content,
@@ -86,6 +107,8 @@ public object OneRingDefaults {
         maxSubmenuItemSweepDeg: Float = 110f,
         submenuAlignment: SubmenuAlignment = SubmenuAlignment.Fill,
         seekThumbRadius: Dp = 7.dp,
+        toggleRestOffsetFraction: Float = 0.45f,
+        toggleHighlightGrowthFraction: Float = 0.22f,
     ): OneRingDimensions = OneRingDimensions(
         mainInner = mainInner,
         mainOuter = mainOuter,
@@ -104,6 +127,8 @@ public object OneRingDefaults {
         maxSubmenuItemSweepDeg = maxSubmenuItemSweepDeg,
         submenuAlignment = submenuAlignment,
         seekThumbRadius = seekThumbRadius,
+        toggleRestOffsetFraction = toggleRestOffsetFraction,
+        toggleHighlightGrowthFraction = toggleHighlightGrowthFraction,
     )
 
     public fun motion(
@@ -122,6 +147,7 @@ public object OneRingDefaults {
         siblingExit: AnimationSpec<Float> = tween(180, easing = EaseOutCubic),
         seekHintRise: AnimationSpec<Float> = tween(480, easing = EaseOutCubic),
         seekHintSettle: AnimationSpec<Float> = tween(190, easing = EaseOutCubic),
+        toggleFlip: AnimationSpec<Float> = tween(320, easing = EaseInOutCubic),
     ): OneRingMotion = OneRingMotion(
         hover = hover,
         select = select,
@@ -131,6 +157,7 @@ public object OneRingDefaults {
         siblingExit = siblingExit,
         seekHintRise = seekHintRise,
         seekHintSettle = seekHintSettle,
+        toggleFlip = toggleFlip,
     )
 
     public fun behavior(

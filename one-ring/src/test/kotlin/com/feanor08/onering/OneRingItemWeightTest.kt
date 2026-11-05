@@ -16,6 +16,7 @@ class OneRingItemWeightTest {
         assertEquals(1f, OneRingItem.Action(id = "a", label = "A").weight, 0f)
         assertEquals(1f, OneRingItem.Menu(id = "m", label = "M", children = emptyList()).weight, 0f)
         assertEquals(1f, OneRingItem.Seek(id = "s", label = "S", value = 0f, onValueChange = {}).weight, 0f)
+        assertEquals(1f, OneRingItem.Toggle(id = "t", label = "T", checked = false, onCheckedChange = {}).weight, 0f)
     }
 
     @Test
@@ -39,6 +40,11 @@ class OneRingItemWeightTest {
     fun `invalid weights are rejected on menus and seeks too`() {
         assertRejects { OneRingItem.Menu(id = "m", label = "M", children = emptyList(), weight = 0f) }
         assertRejects { OneRingItem.Seek(id = "s", label = "S", value = 0f, onValueChange = {}, weight = Float.NaN) }
+    }
+
+    @Test
+    fun `invalid weights are rejected on toggles too`() {
+        assertRejects { OneRingItem.Toggle(id = "t", label = "T", checked = false, onCheckedChange = {}, weight = 0f) }
     }
 
     @Test

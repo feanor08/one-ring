@@ -13,6 +13,11 @@ enum class Demo(val title: String, val summary: String) {
         "The submenu growing outer-edge inward, on a weighted parent with weighted children and a seek.",
     ),
     Seek("Seek", "Radial sliders on the main ring and inside a submenu, with arbitrary ranges and steps."),
+    Toggle(
+        "Toggle",
+        "Boolean wedges on the main ring and inside a submenu -- off sits shorter with a muted red " +
+            "tint, on sits taller with a muted green tint, animated on every flip.",
+    ),
     Notifications(
         "Notifications",
         "Center notification feed, source grouping, arrival animation, scrolling and dismiss gestures.",

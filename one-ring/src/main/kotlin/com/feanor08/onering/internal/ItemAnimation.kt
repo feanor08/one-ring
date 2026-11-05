@@ -27,7 +27,7 @@ import androidx.compose.runtime.Stable
  * [RingInteractionController]'s open/close sequences.
  */
 @Stable
-internal class ItemAnimation {
+internal class ItemAnimation(initialToggleProgress: Float = 0f) {
     val expansion = Animatable(0f)
     val contentAlpha = Animatable(1f)
     val iconAlpha = Animatable(1f)
@@ -35,4 +35,16 @@ internal class ItemAnimation {
 
     /** 0..1 progress of a hold-to-commit wedge's fill ([com.feanor08.onering.OneRingItem.Action.holdMs]). */
     val holdProgress = Animatable(0f)
+
+    /**
+     * A [com.feanor08.onering.OneRingItem.Toggle]'s 0 (off) .. 1 (on)
+     * resting-state progress -- unrelated to [expansion], which is purely
+     * momentary hover/press styling. [initialToggleProgress] seeds this
+     * *synchronously* at construction (from the item's actual [checked][com.feanor08.onering.OneRingItem.Toggle.checked]
+     * value the first time [RingAnimations.of] creates this entry) rather
+     * than defaulting to 0 and animating to the correct value asynchronously
+     * -- an async correction would flash the wrong resting state for a
+     * frame on first composition.
+     */
+    val toggleProgress = Animatable(initialToggleProgress)
 }

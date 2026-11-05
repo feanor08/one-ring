@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -61,7 +62,18 @@ internal fun RingSemanticsLayer(
                 .size(TargetSize)
                 .semantics(mergeDescendants = true) {
                     contentDescription = item.contentDescription ?: item.label
-                    role = Role.Button
+                    // A OneRingItem.Toggle announces as a real switch with its
+                    // current value, e.g. "Bluetooth, switch, off" -- state is
+                    // never left to be inferred from color/wedge height alone.
+                    // [item.checked] is the host-confirmed value, so this can
+                    // never announce a change before onCheckedChange has
+                    // actually been processed and fed back in as new props.
+                    if (item is OneRingItem.Toggle) {
+                        role = Role.Switch
+                        stateDescription = if (item.checked) "On" else "Off"
+                    } else {
+                        role = Role.Button
+                    }
                     traversalIndex = index.toFloat()
                     if (!item.enabled) disabled()
                     if (item.id == highlightedId) selected = true

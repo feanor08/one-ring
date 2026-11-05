@@ -20,6 +20,7 @@ internal fun List<OneRingItem>.layoutKey(): Int {
             is OneRingItem.Action -> 1
             is OneRingItem.Menu -> 31 * 2 + item.children.layoutKey()
             is OneRingItem.Seek -> 3
+            is OneRingItem.Toggle -> 4
         }
     }
     return hash

@@ -25,6 +25,7 @@ class ReducedMotionTest {
         assertTrue(reduced.submenuReveal is SnapSpec)
         assertTrue(reduced.iconMorph is SnapSpec)
         assertTrue(reduced.siblingExit is SnapSpec)
+        assertTrue(reduced.toggleFlip is SnapSpec)
         assertNotEquals(motion, reduced)
     }
 }

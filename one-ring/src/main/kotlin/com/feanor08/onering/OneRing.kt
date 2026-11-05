@@ -151,6 +151,7 @@ public fun OneRing(
         val alphaOf = { itemId: String -> state.animations.of(itemId).contentAlpha.value }
         val iconAlphaOf = { itemId: String -> state.animations.of(itemId).iconAlpha.value }
         val backIconAlphaOf = { itemId: String -> state.animations.of(itemId).backIconAlpha.value }
+        val toggleProgressOf = { itemId: String -> state.animations.of(itemId).toggleProgress.value }
         val submenu = currentSubmenu(items, state.path)
         val parentSpan = submenu?.let { (parent, _) ->
             resolved.mainSpans.getOrNull(items.indexOfFirst { it.id == parent.id })
@@ -183,6 +184,7 @@ public fun OneRing(
                 highlightedId = state.highlightedId,
                 mainSiblingRevealProgress = mainSiblingReveal,
                 activeItemId = activeMainItemId,
+                toggleProgressOf = toggleProgressOf,
             )
 
             if (submenu != null && parentSpan != null) {
@@ -196,6 +198,7 @@ public fun OneRing(
                     expansionOf = expansionOf,
                     alphaOf = alphaOf,
                     highlightedId = state.highlightedId,
+                    toggleProgressOf = toggleProgressOf,
                 )
                 frame = frame.copy(arcs = frame.arcs + submenuArcs)
             }
@@ -262,7 +265,8 @@ public fun OneRing(
             colors = style.colors,
             highlightedId = state.highlightedId,
             outerPxOf = { id ->
-                val base = resolved.mainOuterFor(expansionOf(id))
+                val isToggle = items.firstOrNull { it.id == id } is OneRingItem.Toggle
+                val base = resolved.mainOuterFor(expansionOf(id), if (isToggle) toggleProgressOf(id) else null)
                 if (id == activeMainItemId) base else lerp(resolved.mainInnerPx, base, mainSiblingReveal)
             },
             alphaOf = alphaOf,
@@ -284,7 +288,10 @@ public fun OneRing(
                 centerPx = resolved.centerPx,
                 colors = style.colors,
                 highlightedId = state.highlightedId,
-                outerPxOf = { id -> resolved.submenuOuterFor(expansionOf(id).coerceIn(0f, 1f)) },
+                outerPxOf = { id ->
+                    val isToggle = children.firstOrNull { it.id == id } is OneRingItem.Toggle
+                    resolved.submenuOuterFor(expansionOf(id).coerceIn(0f, 1f), if (isToggle) toggleProgressOf(id) else null)
+                },
                 alphaOf = { id -> alphaOf(id) * reveal },
                 scale = REVEAL_MIN_CONTENT_SCALE + (1f - REVEAL_MIN_CONTENT_SCALE) * reveal,
                 iconAlphaOf = iconAlphaOf,
@@ -397,4 +404,5 @@ private fun closeDescribed(item: OneRingItem): OneRingItem = when (item) {
     is OneRingItem.Menu -> item.copy(contentDescription = "Close ${item.label}")
     is OneRingItem.Seek -> item.copy(contentDescription = "Close ${item.label}")
     is OneRingItem.Action -> item
+    is OneRingItem.Toggle -> item
 }

@@ -35,17 +35,51 @@ internal data class ResolvedRing(
     val mainSpans: List<AngularSpan>,
     val submenuGapDeg: Float,
     val seekThumbRadiusPx: Float,
+    val toggleMainRestOffsetPx: Float,
+    val toggleMainHighlightGrowthPx: Float,
+    val toggleSubmenuRestOffsetPx: Float,
+    val toggleSubmenuHighlightGrowthPx: Float,
 ) {
     val mainBand: RadialBand get() = RadialBand(mainInnerPx, mainOuterPx)
 
-    /** [expansion] is 0 = rest, 1 = hover, 2 = fully selected -- see docs/PLAN.md section 10.4. */
-    fun mainOuterFor(expansion: Float): Float = when {
-        expansion <= 0f -> mainOuterPx
-        expansion <= 1f -> lerp(mainOuterPx, mainHoverOuterPx, expansion)
-        else -> lerp(mainHoverOuterPx, mainSelectedOuterPx, (expansion - 1f).coerceAtMost(1f))
+    /**
+     * [expansion] is 0 = rest, 1 = hover, 2 = fully selected -- see
+     * docs/PLAN.md section 10.4. [toggleProgress] (0 = off, 1 = on), when
+     * non-null, shifts the rest/hover baseline for a
+     * [com.feanor08.onering.OneRingItem.Toggle] instead of using the ordinary
+     * main outer radii -- see [toggleMainRestOffsetPx]/[toggleMainHighlightGrowthPx].
+     * A toggle never reaches `expansion > 1` (it never becomes the open-menu/
+     * seek back control), but the selected radius is still honored if it
+     * somehow did, so this degrades safely rather than assuming that can't happen.
+     */
+    fun mainOuterFor(expansion: Float, toggleProgress: Float? = null): Float {
+        if (toggleProgress == null) {
+            return when {
+                expansion <= 0f -> mainOuterPx
+                expansion <= 1f -> lerp(mainOuterPx, mainHoverOuterPx, expansion)
+                else -> lerp(mainHoverOuterPx, mainSelectedOuterPx, (expansion - 1f).coerceAtMost(1f))
+            }
+        }
+        val restOffset = lerp(-toggleMainRestOffsetPx, toggleMainRestOffsetPx, toggleProgress.coerceIn(0f, 1f))
+        val rest = mainOuterPx + restOffset
+        val hover = rest + toggleMainHighlightGrowthPx
+        return when {
+            expansion <= 0f -> rest
+            expansion <= 1f -> lerp(rest, hover, expansion)
+            else -> lerp(hover, mainSelectedOuterPx, (expansion - 1f).coerceAtMost(1f))
+        }
     }
 
-    fun submenuOuterFor(hover: Float): Float = lerp(submenuOuterPx, submenuHoverOuterPx, hover.coerceIn(0f, 1f))
+    /** [toggleProgress]'s submenu counterpart to [mainOuterFor]'s -- see that overload's doc. */
+    fun submenuOuterFor(hover: Float, toggleProgress: Float? = null): Float {
+        if (toggleProgress == null) {
+            return lerp(submenuOuterPx, submenuHoverOuterPx, hover.coerceIn(0f, 1f))
+        }
+        val restOffset = lerp(-toggleSubmenuRestOffsetPx, toggleSubmenuRestOffsetPx, toggleProgress.coerceIn(0f, 1f))
+        val rest = submenuOuterPx + restOffset
+        val toggleHover = rest + toggleSubmenuHighlightGrowthPx
+        return lerp(rest, toggleHover, hover.coerceIn(0f, 1f))
+    }
 }
 
 internal fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
@@ -92,16 +126,21 @@ internal fun resolveRing(
     val submenuOuterPx = dimensions.submenuOuter.resolvePx(baseRadius, density)
     val submenuGapDeg = if (submenuOuterPx > 0f) (gapPx / submenuOuterPx) * (180f / Math.PI.toFloat()) else 0f
 
+    val mainHoverOuterPx = dimensions.mainHoverOuter.resolvePx(baseRadius, density)
+    val submenuHoverOuterPx = dimensions.submenuHoverOuter.resolvePx(baseRadius, density)
+    val mainHoverGrowthPx = mainHoverOuterPx - mainOuterPx
+    val submenuHoverGrowthPx = submenuHoverOuterPx - submenuOuterPx
+
     return ResolvedRing(
         centerPx = center,
         baseRadiusPx = baseRadius,
         mainInnerPx = dimensions.mainInner.resolvePx(baseRadius, density),
         mainOuterPx = mainOuterPx,
-        mainHoverOuterPx = dimensions.mainHoverOuter.resolvePx(baseRadius, density),
+        mainHoverOuterPx = mainHoverOuterPx,
         mainSelectedOuterPx = dimensions.mainSelectedOuter.resolvePx(baseRadius, density),
         submenuInnerPx = dimensions.submenuInner.resolvePx(baseRadius, density),
         submenuOuterPx = submenuOuterPx,
-        submenuHoverOuterPx = dimensions.submenuHoverOuter.resolvePx(baseRadius, density),
+        submenuHoverOuterPx = submenuHoverOuterPx,
         centerRadiusPx = dimensions.centerRadius.resolvePx(baseRadius, density),
         coreOverlayRadiusPx = dimensions.coreOverlayRadius.resolvePx(baseRadius, density),
         sectorStrokeWidthPx = with(density) { dimensions.sectorStrokeWidth.toPx() },
@@ -109,5 +148,9 @@ internal fun resolveRing(
         mainSpans = mainSpans,
         submenuGapDeg = submenuGapDeg,
         seekThumbRadiusPx = with(density) { dimensions.seekThumbRadius.toPx() },
+        toggleMainRestOffsetPx = mainHoverGrowthPx * dimensions.toggleRestOffsetFraction,
+        toggleMainHighlightGrowthPx = mainHoverGrowthPx * dimensions.toggleHighlightGrowthFraction,
+        toggleSubmenuRestOffsetPx = submenuHoverGrowthPx * dimensions.toggleRestOffsetFraction,
+        toggleSubmenuHighlightGrowthPx = submenuHoverGrowthPx * dimensions.toggleHighlightGrowthFraction,
     )
 }

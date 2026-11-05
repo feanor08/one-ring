@@ -79,6 +79,34 @@ public sealed interface OneRingItem {
     }
 
     /**
+     * A boolean/toggle wedge. [checked] is fully controlled by the caller,
+     * like [Seek.value] -- one-ring never owns this state, it only renders
+     * the provided value and calls [onCheckedChange] when the user commits a
+     * toggle (release while highlighted). The library never interprets what
+     * the boolean *means* -- Bluetooth, night mode, whatever -- that's the
+     * caller's business, same as [Action.payload].
+     *
+     * Committing a [Toggle] flips it and calls [onCheckedChange] with the new
+     * value; unlike [Action], it does not close an enclosing submenu, since a
+     * switch is usually flipped more than once per visit.
+     */
+    @Immutable
+    public data class Toggle(
+        override val id: String,
+        override val label: String,
+        override val icon: OneRingIcon = OneRingIcon.None,
+        override val enabled: Boolean = true,
+        override val contentDescription: String? = null,
+        public val checked: Boolean,
+        public val onCheckedChange: (Boolean) -> Unit,
+        override val weight: Float = 1f,
+    ) : OneRingItem {
+        init {
+            requireValidWeight(id, weight)
+        }
+    }
+
+    /**
      * A radial slider item. [value] is fully controlled by the caller, like
      * [androidx.compose.material3.Slider] -- one-ring never owns this state.
      */

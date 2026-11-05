@@ -29,5 +29,6 @@ internal fun effectiveMotion(motion: OneRingMotion, animationsEnabled: Boolean):
         siblingExit = instant,
         seekHintRise = instant,
         seekHintSettle = instant,
+        toggleFlip = instant,
     )
 }

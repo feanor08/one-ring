@@ -40,6 +40,19 @@ public class OneRingItemsScope internal constructor() {
         items += OneRingItem.Menu(id, label, icon, enabled, contentDescription, children, closeIcon, weight)
     }
 
+    public fun toggle(
+        id: String,
+        label: String,
+        checked: Boolean,
+        onCheckedChange: (Boolean) -> Unit,
+        icon: OneRingIcon = OneRingIcon.None,
+        enabled: Boolean = true,
+        contentDescription: String? = null,
+        weight: Float = 1f,
+    ) {
+        items += OneRingItem.Toggle(id, label, icon, enabled, contentDescription, checked, onCheckedChange, weight)
+    }
+
     public fun seek(
         id: String,
         label: String,

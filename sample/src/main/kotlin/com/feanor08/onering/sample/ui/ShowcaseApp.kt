@@ -37,6 +37,7 @@ import com.feanor08.onering.sample.ui.demos.SeekDemo
 import com.feanor08.onering.sample.ui.demos.SmartHomeDemo
 import com.feanor08.onering.sample.ui.demos.StressTestDemo
 import com.feanor08.onering.sample.ui.demos.StylingDemo
+import com.feanor08.onering.sample.ui.demos.ToggleDemo
 import com.feanor08.onering.sample.ui.demos.WeightedDemo
 
 /** Root of the showcase: a flat home list, and a single-level "open a demo" navigation. */
@@ -85,6 +86,7 @@ private fun DemoHost(demo: Demo, onBack: () -> Unit) {
         Demo.Weighted -> WeightedDemo(onBack)
         Demo.NestedGrowth -> NestedGrowthDemo(onBack)
         Demo.Seek -> SeekDemo(onBack)
+        Demo.Toggle -> ToggleDemo(onBack)
         Demo.Notifications -> NotificationDemo(onBack)
         Demo.NotificationStackStress -> NotificationStackStressDemo(onBack)
         Demo.ItemCounts -> ItemCountDemo(onBack)

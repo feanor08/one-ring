@@ -21,4 +21,12 @@ public data class OneRingMotion internal constructor(
     public val siblingExit: AnimationSpec<Float>,
     public val seekHintRise: AnimationSpec<Float>,
     public val seekHintSettle: AnimationSpec<Float>,
+    /**
+     * A [com.feanor08.onering.OneRingItem.Toggle]'s committed value change --
+     * the single continuous transition driving its resting-radius grow/shrink
+     * and its fill-tint blend together, deliberately soft and restrained
+     * (smooth velocity at both ends, not a spring) rather than choreographed
+     * in stages like [select]/[close].
+     */
+    public val toggleFlip: AnimationSpec<Float>,
 )

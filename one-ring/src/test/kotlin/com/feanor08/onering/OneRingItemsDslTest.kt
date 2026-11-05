@@ -39,6 +39,17 @@ class OneRingItemsDslTest {
         assertEquals(0.75f, value, 0f)
     }
 
+    @Test fun `toggle captures a fully controlled checked value`() {
+        var checked = false
+        val items = oneRingItems {
+            toggle(id = "bt", label = "Bluetooth", checked = checked, onCheckedChange = { checked = it })
+        }
+        val toggle = items.single() as OneRingItem.Toggle
+        assertEquals(false, toggle.checked)
+        toggle.onCheckedChange(true)
+        assertEquals(true, checked)
+    }
+
     @Test fun `duplicate sibling ids are rejected at construction time`() {
         assertThrows(IllegalArgumentException::class.java) {
             oneRingItems {

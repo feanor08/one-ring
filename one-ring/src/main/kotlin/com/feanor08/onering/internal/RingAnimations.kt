@@ -7,7 +7,8 @@ import androidx.compose.runtime.Stable
 internal class RingAnimations {
     private val byId = mutableMapOf<String, ItemAnimation>()
 
-    fun of(id: String): ItemAnimation = byId.getOrPut(id) { ItemAnimation() }
+    fun of(id: String, initialToggleProgress: Float = 0f): ItemAnimation =
+        byId.getOrPut(id) { ItemAnimation(initialToggleProgress) }
 
     /** Drops animation state for items no longer present, called when the item list structurally changes. */
     fun prune(liveIds: Set<String>) {

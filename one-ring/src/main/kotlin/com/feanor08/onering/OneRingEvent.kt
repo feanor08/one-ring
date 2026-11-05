@@ -23,6 +23,10 @@ public sealed interface OneRingEvent {
     @Immutable
     public data class HoldCancelled(public val itemId: String, public val heldMs: Long) : OneRingEvent
 
+    /** A [com.feanor08.onering.OneRingItem.Toggle] was committed; [checked] is its new value. */
+    @Immutable
+    public data class ToggleChanged(public val itemId: String, public val checked: Boolean) : OneRingEvent
+
     @Immutable
     public data class MenuOpened(public val itemId: String) : OneRingEvent
 

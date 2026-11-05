@@ -31,6 +31,14 @@ internal data class ArcVisual(
     val stroke: Color,
     val strokeWidthPx: Float,
     val alpha: Float,
+    /**
+     * True while the pointer is currently over this wedge. [drawRing] redraws
+     * every such arc's stroke in a final foreground pass after every wedge's
+     * own fill+stroke has been painted, so a neighboring wedge drawn later
+     * (or one whose radius happens to overlap) can never cover one side of
+     * the highlight outline -- see that function's doc.
+     */
+    val isHighlighted: Boolean = false,
 )
 
 @Immutable

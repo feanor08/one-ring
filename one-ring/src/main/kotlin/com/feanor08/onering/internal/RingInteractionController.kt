@@ -84,6 +84,8 @@ internal class RingInteractionController(private val state: OneRingState) {
     private var holdId: String? = null
     private var holdStartedAtMs: Long = 0L
     private var holdFiredId: String? = null
+    /** Last-observed `checked` per toggle item id, so [syncToggleAnimations] can tell an actual flip from a no-op re-render. */
+    private val toggleTrackedChecked = mutableMapOf<String, Boolean>()
 
     fun update(
         items: List<OneRingItem>,
@@ -107,6 +109,7 @@ internal class RingInteractionController(private val state: OneRingState) {
         this.hasCoreOverlay = hasCoreOverlay
         // A held wedge that has left the item list (or lost its hold) must not go on filling.
         holdId?.let { held -> if (holdActionFor(held) == null) cancelHold(held) }
+        syncToggleAnimations()
     }
 
     /** The enabled hold-to-commit action [id] names, in the main ring or the open submenu; null for anything else. */
@@ -154,6 +157,36 @@ internal class RingInteractionController(private val state: OneRingState) {
         holdFiredId?.let { fired ->
             holdFiredId = null
             state.scope.launch { state.animations.of(fired).holdProgress.animateTo(0f, tween(220)) }
+        }
+    }
+
+    /**
+     * Reacts to every [OneRingItem.Toggle]'s current `checked` value, at any
+     * depth this controller currently renders (top level and, if open, the
+     * current submenu) -- not just ones committed through this controller.
+     * [OneRingItem.Toggle.checked] is caller-controlled, like
+     * [OneRingItem.Seek.value]; this makes the resting-geometry/fill
+     * transition react uniformly to *any* value change, whether it came from
+     * the user's own commit (which already called `onCheckedChange` last
+     * frame) or the host changing it externally -- exactly how a controlled
+     * Compose component is expected to behave. The first time an id is seen
+     * it snaps (via [ItemAnimation]'s constructor, see [RingAnimations.of]),
+     * never animates -- only a genuine change after that animates.
+     */
+    private fun syncToggleAnimations() {
+        val m = motion ?: return
+        val submenuChildren = currentSubmenu(items, state.path)?.second.orEmpty()
+        val toggles = (items.asSequence() + submenuChildren.asSequence()).filterIsInstance<OneRingItem.Toggle>()
+        for (item in toggles) {
+            val target = if (item.checked) 1f else 0f
+            val anim = state.animations.of(item.id, initialToggleProgress = target).toggleProgress
+            val previous = toggleTrackedChecked[item.id]
+            if (previous == null) {
+                toggleTrackedChecked[item.id] = item.checked
+            } else if (previous != item.checked) {
+                toggleTrackedChecked[item.id] = item.checked
+                state.scope.launch { anim.animateTo(target, m.toggleFlip) }
+            }
         }
     }
 
@@ -315,6 +348,7 @@ internal class RingInteractionController(private val state: OneRingState) {
             is OneRingItem.Action -> commitAction(item)
             is OneRingItem.Menu -> if (item.enabled) beginOpen(item) else haptic(OneRingHapticEvent.Rejected)
             is OneRingItem.Seek -> if (item.enabled) beginMainSeek(item) else haptic(OneRingHapticEvent.Rejected)
+            is OneRingItem.Toggle -> commitToggle(item)
             null -> Unit
         }
     }
@@ -334,6 +368,7 @@ internal class RingInteractionController(private val state: OneRingState) {
             } else {
                 haptic(OneRingHapticEvent.Rejected)
             }
+            is OneRingItem.Toggle -> commitToggle(item)
             // Nested Menu within a submenu isn't interactive yet.
             else -> Unit
         }
@@ -346,6 +381,28 @@ internal class RingInteractionController(private val state: OneRingState) {
         }
         onAction(item)
         onEvent?.invoke(OneRingEvent.ActionCommitted(item.id))
+        haptic(OneRingHapticEvent.Committed)
+    }
+
+    /**
+     * Flips the toggle and hands the new value to its own
+     * [OneRingItem.Toggle.onCheckedChange] -- fully controlled, exactly like
+     * [OneRingItem.Seek.onValueChange], so there is no separate `onToggle`
+     * parameter on [com.feanor08.onering.OneRing] itself. Deliberately does
+     * *not* close an enclosing submenu afterward (unlike [commitAction]'s
+     * submenu-child branch) -- a switch is meant to be flipped more than once
+     * per visit. The actual resting-geometry/fill transition is driven by
+     * [syncToggleAnimations] reacting to the value the host feeds back next
+     * frame, not started here directly.
+     */
+    private fun commitToggle(item: OneRingItem.Toggle) {
+        if (!item.enabled) {
+            haptic(OneRingHapticEvent.Rejected)
+            return
+        }
+        val newValue = !item.checked
+        item.onCheckedChange(newValue)
+        onEvent?.invoke(OneRingEvent.ToggleChanged(item.id, newValue))
         haptic(OneRingHapticEvent.Committed)
     }
 
