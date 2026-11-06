@@ -139,6 +139,7 @@ public object OneRingDefaults {
         select: AnimationSpec<Float> = tween(280, easing = EaseOutCubic),
         close: AnimationSpec<Float> = tween(250, easing = EaseOutCubic),
         submenuReveal: AnimationSpec<Float> = tween(280, easing = EaseOutCubic),
+        submenuClose: AnimationSpec<Float> = tween(180, easing = EaseOutCubic),
         // Short on purpose: an item's glyph and its close (X) glyph are faded in
         // separate, non-overlapping stages, so this runs twice per transition
         // (out before the geometry moves, in after it settles) and a long spec
@@ -153,6 +154,7 @@ public object OneRingDefaults {
         select = select,
         close = close,
         submenuReveal = submenuReveal,
+        submenuClose = submenuClose,
         iconMorph = iconMorph,
         siblingExit = siblingExit,
         seekHintRise = seekHintRise,
@@ -210,6 +212,7 @@ public object OneRingDefaults {
             select = tween(160, easing = EaseOutCubic),
             close = tween(140, easing = EaseOutCubic),
             submenuReveal = tween(160, easing = EaseOutCubic),
+            submenuClose = tween(110, easing = EaseOutCubic),
             siblingExit = tween(100, easing = EaseOutCubic),
             seekHintRise = tween(260, easing = EaseOutCubic),
             seekHintSettle = tween(120, easing = EaseOutCubic),

@@ -59,7 +59,7 @@ private const val SUBMENU_REVEAL_STAGGER_MS = 45L
  * compensates for separate Compose draw passes without making the two bands
  * visibly overlap, so the exit reads as one continuous component.
  */
-private const val SUBMENU_CLOSE_HANDOFF_REVEAL = 0.08f
+private const val SUBMENU_CLOSE_HANDOFF_REVEAL = 0.22f
 
 /**
  * How late into a wedge's geometry change its paired glyph (X on open, the
@@ -502,7 +502,7 @@ internal class RingInteractionController(private val state: OneRingState) {
             // remove the inner submenu, then return the outer main ring. Hand
             // off in the final 8% rather than waiting for the next draw frame,
             // which avoids a perceptible blank beat between the two motions.
-            val shrink = launch { state.submenuReveal.animateTo(0f, m.submenuReveal) }
+            val shrink = launch { state.submenuReveal.animateTo(0f, m.submenuClose) }
             while (state.submenuReveal.value > SUBMENU_CLOSE_HANDOFF_REVEAL) delay(GEOMETRY_POLL_MS)
 
             items.asSequence().filter { it.id != parentId }.forEach { sibling ->

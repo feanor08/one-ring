@@ -57,6 +57,7 @@ class MainSiblingReturnTest {
         select = tween(SELECT_MS, easing = LinearEasing),
         close = tween(CLOSE_MS, easing = LinearEasing),
         submenuReveal = tween(REVEAL_MS, easing = LinearEasing),
+        submenuClose = tween(REVEAL_MS, easing = LinearEasing),
         iconMorph = tween(60, easing = LinearEasing),
         siblingExit = tween(SELECT_MS, easing = LinearEasing),
     )

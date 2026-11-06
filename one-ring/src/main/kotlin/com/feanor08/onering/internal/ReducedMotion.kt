@@ -25,6 +25,7 @@ internal fun effectiveMotion(motion: OneRingMotion, animationsEnabled: Boolean):
         select = instant,
         close = instant,
         submenuReveal = instant,
+        submenuClose = instant,
         iconMorph = instant,
         siblingExit = instant,
         seekHintRise = instant,

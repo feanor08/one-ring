@@ -17,6 +17,8 @@ public data class OneRingMotion internal constructor(
     public val select: AnimationSpec<Float>,
     public val close: AnimationSpec<Float>,
     public val submenuReveal: AnimationSpec<Float>,
+    /** Closing-only counterpart to [submenuReveal], allowing submenu entry to stay deliberate while exit is snappier. */
+    public val submenuClose: AnimationSpec<Float>,
     public val iconMorph: AnimationSpec<Float>,
     public val siblingExit: AnimationSpec<Float>,
     public val seekHintRise: AnimationSpec<Float>,
