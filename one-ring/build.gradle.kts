@@ -25,7 +25,7 @@ dokka {
 
 android {
     namespace = "com.feanor08.onering"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24
