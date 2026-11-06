@@ -55,6 +55,13 @@ import kotlin.math.roundToInt
 private const val SUBMENU_REVEAL_STAGGER_MS = 45L
 
 /**
+ * Start the outer-ring return in the final sliver of submenu collapse. This
+ * compensates for separate Compose draw passes without making the two bands
+ * visibly overlap, so the exit reads as one continuous component.
+ */
+private const val SUBMENU_CLOSE_HANDOFF_REVEAL = 0.08f
+
+/**
  * How late into a wedge's geometry change its paired glyph (X on open, the
  * original icon on close) begins fading in, expressed as the remaining
  * fraction of the distance still to travel. 0.22 means the fade starts once
@@ -491,11 +498,12 @@ internal class RingInteractionController(private val state: OneRingState) {
             // `path` must stay published until the wedges have actually finished
             // shrinking, or they'd vanish mid-collapse instead of closing down to
             // zero thickness.
-            // Closing is deliberately the reverse of opening in two distinct
-            // phases: first remove the inner submenu, then return the outer
-            // main ring. Starting the two at once makes the main ring grow
-            // through the still-visible submenu and reads as a collision.
-            state.submenuReveal.animateTo(0f, m.submenuReveal)
+            // Closing is deliberately the reverse of opening in two phases:
+            // remove the inner submenu, then return the outer main ring. Hand
+            // off in the final 8% rather than waiting for the next draw frame,
+            // which avoids a perceptible blank beat between the two motions.
+            val shrink = launch { state.submenuReveal.animateTo(0f, m.submenuReveal) }
+            while (state.submenuReveal.value > SUBMENU_CLOSE_HANDOFF_REVEAL) delay(GEOMETRY_POLL_MS)
 
             items.asSequence().filter { it.id != parentId }.forEach { sibling ->
                 launch { state.animations.of(sibling.id).contentAlpha.animateTo(1f, m.siblingExit) }
@@ -509,6 +517,7 @@ internal class RingInteractionController(private val state: OneRingState) {
             watchThenFade(expansion, startExpansion, 0f, state.animations.of(parentId).iconAlpha, 1f, m.iconMorph)
             returnJob.join()
             siblingReturn.join()
+            shrink.join()
 
             state.path = state.path.dropLast(1)
             state.phase = OneRingState.Phase.Settled
