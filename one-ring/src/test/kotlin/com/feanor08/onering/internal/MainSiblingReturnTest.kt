@@ -127,8 +127,8 @@ class MainSiblingReturnTest {
             advanceUntilIdle()
 
             controller.closeDirectly()
-            // Past the iconMorph X-out stage (60ms), a quarter into the 300ms close.
-            advanceTimeBy(60L + CLOSE_MS / 4)
+            // The submenu collapses first; this is a quarter into the main-ring return.
+            advanceTimeBy(60L + REVEAL_MS + CLOSE_MS / 4)
             runCurrent()
 
             val outer = renderedOuterPx(state, "climate")
@@ -149,7 +149,7 @@ class MainSiblingReturnTest {
             advanceUntilIdle()
 
             controller.closeDirectly()
-            advanceTimeBy(60L + CLOSE_MS / 4)
+            advanceTimeBy(60L + REVEAL_MS + CLOSE_MS / 4)
             runCurrent()
             val quarter = renderedOuterPx(state, "climate")
 
@@ -212,7 +212,7 @@ class MainSiblingReturnTest {
             assertEquals(0f, state.animations.of("climate").contentAlpha.value, 0.01f)
 
             controller.closeDirectly()
-            advanceTimeBy(60L + CLOSE_MS / 2)
+            advanceTimeBy(60L + REVEAL_MS + CLOSE_MS / 2)
             runCurrent()
             val mid = state.animations.of("climate").contentAlpha.value
             assertTrue("alpha should be partway back at the midpoint, was $mid", mid > 0.05f && mid < 0.95f)
@@ -222,10 +222,10 @@ class MainSiblingReturnTest {
         }
     }
 
-    // ---- Submenu collapses at the same time as siblings regrow -----------
+    // ---- Submenu collapses before siblings regrow -------------------------
 
     @Test
-    fun `the submenu is simultaneously mid-collapse while siblings are mid-regrow`() = runTest {
+    fun `siblings remain collapsed while the submenu is shrinking`() = runTest {
         withContext(VirtualFrameClock(scheduler = testScheduler)) {
             val state = OneRingState(emptyList())
             val controller = controllerFor(state, this)
@@ -233,13 +233,13 @@ class MainSiblingReturnTest {
             advanceUntilIdle()
 
             controller.closeDirectly()
-            advanceTimeBy(60L + CLOSE_MS / 3)
+            advanceTimeBy(60L + REVEAL_MS / 3)
             runCurrent()
 
             val siblingOuter = renderedOuterPx(state, "climate")
             assertTrue(
-                "siblings hadn't started regrowing while submenu was mid-collapse",
-                siblingOuter > resolved.mainInnerPx + TOL,
+                "siblings started regrowing before the submenu had collapsed",
+                siblingOuter <= resolved.mainInnerPx + TOL,
             )
             assertTrue(
                 "submenu reveal should be mid-collapse at the same time, was ${state.submenuReveal.value}",

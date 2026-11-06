@@ -483,13 +483,6 @@ internal class RingInteractionController(private val state: OneRingState) {
             state.scope.launch { state.animations.of(child.id).contentAlpha.animateTo(1f, m.siblingExit) }
         }
 
-        items.asSequence().filter { it.id != parentId }.forEach { sibling ->
-            state.scope.launch { state.animations.of(sibling.id).contentAlpha.animateTo(1f, m.siblingExit) }
-        }
-        // Non-selected main wedges regrow from the inner radius at the same
-        // time the submenu collapses and the parent shrinks -- see beginOpen.
-        state.scope.launch { state.mainSiblingReveal.animateTo(1f, m.close) }
-
         state.scope.launch {
             // Staged reverse: the X fades out completely *before* any geometry
             // moves, so it's never visible at the same time as the returning icon.
@@ -498,15 +491,24 @@ internal class RingInteractionController(private val state: OneRingState) {
             // `path` must stay published until the wedges have actually finished
             // shrinking, or they'd vanish mid-collapse instead of closing down to
             // zero thickness.
-            val shrink = state.scope.launch { state.submenuReveal.animateTo(0f, m.submenuReveal) }
+            // Closing is deliberately the reverse of opening in two distinct
+            // phases: first remove the inner submenu, then return the outer
+            // main ring. Starting the two at once makes the main ring grow
+            // through the still-visible submenu and reads as a collision.
+            state.submenuReveal.animateTo(0f, m.submenuReveal)
+
+            items.asSequence().filter { it.id != parentId }.forEach { sibling ->
+                launch { state.animations.of(sibling.id).contentAlpha.animateTo(1f, m.siblingExit) }
+            }
+            val siblingReturn = launch { state.mainSiblingReveal.animateTo(1f, m.close) }
             val expansion = state.animations.of(parentId).expansion
             val startExpansion = expansion.value
-            val returnJob = state.scope.launch { expansion.animateTo(0f, m.close) }
+            val returnJob = launch { expansion.animateTo(0f, m.close) }
             // The original icon begins fading in during roughly the final
             // quarter of the parent's return -- the mirror of beginOpen's X.
             watchThenFade(expansion, startExpansion, 0f, state.animations.of(parentId).iconAlpha, 1f, m.iconMorph)
             returnJob.join()
-            shrink.join()
+            siblingReturn.join()
 
             state.path = state.path.dropLast(1)
             state.phase = OneRingState.Phase.Settled
