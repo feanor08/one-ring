@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Size
 import com.feanor08.onering.OneRingDefaults
 import com.feanor08.onering.OneRingIcon
 import com.feanor08.onering.OneRingItem
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -109,6 +110,28 @@ class RingFrameBuilderTest {
             .build(list, resolved, colors, expansionOf = { 0f }, highlightedId = "item0")
             .arcs.first { it.itemIndex == 0 }
         assertEquals(colors.sectorHighlighted, restHighlighted.fill)
+    }
+
+    @Test fun `a stroke gradient replaces the plain stroke, the highlighted one falls back to the plain one`() {
+        val list = items(6)
+        val resolved = resolveRing(Size(600f, 600f), density, OneRingDefaults.dimensions(), list.size)
+        val rest = listOf(Color.Red, Color.Green, Color.Blue, Color.Red)
+        val hi = listOf(Color.Yellow, Color.Cyan, Color.Magenta, Color.Yellow)
+
+        val onlyRest = OneRingDefaults.colors(strokeGradient = rest)
+        val frame = RingFrameBuilder.build(list, resolved, onlyRest, expansionOf = { 0f }, highlightedId = "item1")
+        assertEquals(rest, frame.arcs.first { it.itemIndex == 0 }.strokeGradient)
+        // No highlighted gradient given: the highlighted wedge keeps the ring's gradient.
+        assertEquals(rest, frame.arcs.first { it.itemIndex == 1 }.strokeGradient)
+
+        val both = OneRingDefaults.colors(strokeGradient = rest, strokeHighlightedGradient = hi)
+        val frame2 = RingFrameBuilder.build(list, resolved, both, expansionOf = { 0f }, highlightedId = "item1")
+        assertEquals(rest, frame2.arcs.first { it.itemIndex == 0 }.strokeGradient)
+        assertEquals(hi, frame2.arcs.first { it.itemIndex == 1 }.strokeGradient)
+
+        // Default colours: no gradient anywhere, the plain stroke is what is drawn.
+        val plain = RingFrameBuilder.build(list, resolved, colors, expansionOf = { 0f }, highlightedId = null)
+        assertEquals(null, plain.arcs.first { it.itemIndex == 0 }.strokeGradient)
     }
 
     @Test fun `alphaOf drives per-arc opacity independently of expansion`() {

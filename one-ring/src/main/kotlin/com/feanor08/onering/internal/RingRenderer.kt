@@ -1,5 +1,7 @@
 package com.feanor08.onering.internal
 
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
@@ -20,12 +22,31 @@ import androidx.compose.ui.unit.dp
 internal fun DrawScope.drawRing(frame: RingFrame, pathPool: RingPathPool) {
     var poolIndex = 0
 
+    // One sweep shader per distinct gradient in the frame (normally one or two), not one per wedge.
+    var lastColors: List<Color>? = null
+    var lastBrush: Brush? = null
+    fun brushFor(colors: List<Color>): Brush {
+        if (colors !== lastColors || lastBrush == null) {
+            lastBrush = Brush.sweepGradient(colors = colors, center = frame.centerPx)
+            lastColors = colors
+        }
+        return lastBrush!!
+    }
+    fun DrawScope.strokeArc(arc: ArcVisual, path: androidx.compose.ui.graphics.Path) {
+        val gradient = arc.strokeGradient
+        if (gradient != null && gradient.size >= 2) {
+            drawPath(path, brush = brushFor(gradient), alpha = arc.alpha, style = Stroke(width = arc.strokeWidthPx))
+        } else {
+            drawPath(path, color = arc.stroke, alpha = arc.alpha, style = Stroke(width = arc.strokeWidthPx))
+        }
+    }
+
     frame.arcs.forEach { arc ->
         if (arc.alpha > 0f) {
             val path = pathPool.annularSector(poolIndex, frame.centerPx, arc.span, arc.band)
             drawPath(path, color = arc.fill, alpha = arc.alpha)
             if (arc.strokeWidthPx > 0f) {
-                drawPath(path, color = arc.stroke, alpha = arc.alpha, style = Stroke(width = arc.strokeWidthPx))
+                strokeArc(arc, path)
             }
         }
         poolIndex++
@@ -34,7 +55,7 @@ internal fun DrawScope.drawRing(frame: RingFrame, pathPool: RingPathPool) {
     frame.arcs.forEach { arc ->
         if (arc.isHighlighted && arc.alpha > 0f && arc.strokeWidthPx > 0f) {
             val path = pathPool.annularSector(poolIndex, frame.centerPx, arc.span, arc.band)
-            drawPath(path, color = arc.stroke, alpha = arc.alpha, style = Stroke(width = arc.strokeWidthPx))
+            strokeArc(arc, path)
             poolIndex++
         }
     }

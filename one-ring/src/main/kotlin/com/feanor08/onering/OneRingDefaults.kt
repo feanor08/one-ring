@@ -67,6 +67,8 @@ public object OneRingDefaults {
         seekProgress: Color = Color(0xFF5AA9FF),
         seekThumb: Color = Color.White,
         seekThumbBorder: Color = Color(0xFF5AA9FF),
+        strokeGradient: List<Color>? = null,
+        strokeHighlightedGradient: List<Color>? = null,
     ): OneRingColors = OneRingColors(
         sector = sector,
         sectorAlternate = sectorAlternate,
@@ -87,6 +89,8 @@ public object OneRingDefaults {
         seekProgress = seekProgress,
         seekThumb = seekThumb,
         seekThumbBorder = seekThumbBorder,
+        strokeGradient = strokeGradient,
+        strokeHighlightedGradient = strokeHighlightedGradient,
     )
 
     public fun dimensions(

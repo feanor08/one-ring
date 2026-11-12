@@ -29,6 +29,8 @@ internal data class ArcVisual(
     val band: RadialBand,
     val fill: Color,
     val stroke: Color,
+    /** When set, the stroke is a sweep gradient of these colours round the ring's centre instead of [stroke]. */
+    val strokeGradient: List<Color>? = null,
     val strokeWidthPx: Float,
     val alpha: Float,
     /**

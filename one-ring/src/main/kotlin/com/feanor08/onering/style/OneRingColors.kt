@@ -41,4 +41,11 @@ public data class OneRingColors internal constructor(
     public val seekProgress: Color,
     public val seekThumb: Color,
     public val seekThumbBorder: Color,
+    /**
+     * Optional multi-colour wedge border: the colours of a sweep gradient round the ring's centre, drawn instead of [stroke] when set (null, the
+     * default, keeps the plain [stroke]). Repeat the first colour at the end for a seamless join.
+     */
+    public val strokeGradient: List<Color>? = null,
+    /** [strokeGradient] for the highlighted wedge; null falls back to [strokeHighlighted]. */
+    public val strokeHighlightedGradient: List<Color>? = null,
 )

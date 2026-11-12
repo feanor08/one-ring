@@ -230,6 +230,7 @@ internal object RingFrameBuilder {
             else -> colors.sectorAlternate
         }
         val stroke = if (highlighted) colors.strokeHighlighted else colors.stroke
+        val strokeGradient = if (highlighted) (colors.strokeHighlightedGradient ?: colors.strokeGradient) else colors.strokeGradient
         val rawOuterPx = outerRadiusFor(expansion, toggleProgress)
         // The active item (an open menu's parent, or an active main seek) is
         // never subject to the shared sibling reveal -- its radius is purely a
@@ -248,6 +249,7 @@ internal object RingFrameBuilder {
             band = RadialBand(innerRadiusPx, outerPx),
             fill = fill,
             stroke = stroke,
+            strokeGradient = strokeGradient,
             strokeWidthPx = resolved.sectorStrokeWidthPx,
             alpha = alphaOf(item.id),
             isHighlighted = highlighted,
