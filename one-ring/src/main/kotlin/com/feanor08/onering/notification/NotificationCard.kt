@@ -194,13 +194,19 @@ internal fun NotificationCard(
                     RenderIcon(icon = notification.icon, tint = notification.accentColor, size = CardIconSize)
                     Spacer(modifier = Modifier.width(CardIconSpacing))
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
-                            // The title yields space to sourceStackLabel first (weight + ellipsis)
-                            // rather than both competing for room -- on a narrow card, a truncated
-                            // title beats a wrapped label colliding with the subtitle line below it.
+                        BasicText(
+                            text = notification.title,
+                            style = TextStyle(color = style.colors.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        // The source's thread count sits on the subtitle line, not beside the title: on a narrow circular card it used to squeeze the
+                        // title down to an ellipsis, and the sender's name is the one thing that has to stay readable.
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             BasicText(
-                                text = notification.title,
-                                style = TextStyle(color = style.colors.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                                text = subtitle,
+                                style = TextStyle(color = notification.accentColor, fontSize = 12.sp),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false),
@@ -215,10 +221,6 @@ internal fun NotificationCard(
                                 )
                             }
                         }
-                        BasicText(
-                            text = subtitle,
-                            style = TextStyle(color = notification.accentColor, fontSize = 12.sp),
-                        )
                     }
                 }
                 if (notification.dismissible) {
