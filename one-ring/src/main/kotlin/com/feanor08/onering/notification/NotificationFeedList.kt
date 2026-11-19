@@ -81,6 +81,9 @@ internal fun NotificationFeedList(
         val listState = rememberLazyListState()
         LazyColumn(
             state = listState,
+            // A flick settles with a source's card (or stack) at the top of the circle instead of stopping half-way through one: on a small circular
+            // viewport a card cut in two by the edge reads as a rendering fault, not as "there is more".
+            flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(listState),
             modifier = modifier.fillMaxSize().clip(CircleShape),
             contentPadding = PaddingValues(top = topPaddingDp, bottom = bottomPaddingDp),
             horizontalAlignment = Alignment.CenterHorizontally,
