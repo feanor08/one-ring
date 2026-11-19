@@ -90,12 +90,14 @@ public fun OneRingCenterScope.OneRingNotificationHost(
     state: OneRingNotificationState,
     modifier: Modifier = Modifier,
     style: OneRingNotificationStyle = OneRingNotificationDefaults.style(),
+    onNotificationClick: ((OneRingNotification) -> Unit)? = null,
 ) {
     OneRingNotificationHost(
         state = state,
         visible = notificationsVisible(mode),
         modifier = modifier,
         style = style,
+        onNotificationClick = onNotificationClick,
     )
 }
 
@@ -110,6 +112,12 @@ public fun OneRingNotificationHost(
     visible: Boolean,
     modifier: Modifier = Modifier,
     style: OneRingNotificationStyle = OneRingNotificationDefaults.style(),
+    /**
+     * Called when a card is tapped to open what it is about (an app, a screen). A lone card opens on its first tap; a collapsed stack's front card
+     * still expands the stack on tap, and once expanded every card opens on tap. Null (the default) keeps the original behaviour: the tap only
+     * expands and collapses a stack.
+     */
+    onNotificationClick: ((OneRingNotification) -> Unit)? = null,
 ) {
     val animationsEnabled = rememberAnimationsEnabled()
     val feedAlpha = remember { Animatable(if (visible) 1f else 0f) }
@@ -212,6 +220,7 @@ public fun OneRingNotificationHost(
                 onToggleExpanded = { sourceKey ->
                     storedExpandedSourceKey = toggleExpanded(storedExpandedSourceKey, sourceKey)
                 },
+                onOpen = onNotificationClick,
             )
         }
 

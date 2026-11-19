@@ -67,6 +67,7 @@ internal fun NotificationFeedList(
     onDismiss: (String) -> Unit,
     onToggleExpanded: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpen: ((OneRingNotification) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
 
@@ -104,6 +105,7 @@ internal fun NotificationFeedList(
                         expandedSourceKey = expandedSourceKey,
                         onDismiss = onDismiss,
                         onToggleExpanded = onToggleExpanded,
+                        onOpen = onOpen,
                         edgeTransformLookup = edgeTransformLookup,
                         modifier = Modifier.padding(top = topSpacing),
                     )
@@ -127,6 +129,7 @@ internal fun NotificationFeedList(
                     expandedSourceKey = expandedSourceKey,
                     onDismiss = onDismiss,
                     onToggleExpanded = onToggleExpanded,
+                    onOpen = onOpen,
                     edgeTransformLookup = null,
                     modifier = Modifier.padding(top = topSpacing),
                 )
@@ -154,6 +157,7 @@ private fun SourceGroupContent(
     expandedSourceKey: String?,
     onDismiss: (String) -> Unit,
     onToggleExpanded: (String) -> Unit,
+    onOpen: ((OneRingNotification) -> Unit)?,
     edgeTransformLookup: GroupEdgeTransformLookup?,
     modifier: Modifier = Modifier,
 ) {
@@ -165,6 +169,8 @@ private fun SourceGroupContent(
                 style = style,
                 interactive = interactive,
                 onDismiss = { onDismiss(thread.threadKey) },
+                onTap = onOpen?.let { open -> { open(thread) } },
+                tapAccessibilityLabel = onOpen?.let { "Open ${thread.title}" },
                 modifier = modifier
                     .width(maxCardWidthDp)
                     .heightIn(min = minCardHeightDp)
@@ -182,6 +188,7 @@ private fun SourceGroupContent(
                 expanded = expandedSourceKey == group.sourceKey,
                 onDismiss = onDismiss,
                 onToggleExpanded = { onToggleExpanded(group.sourceKey) },
+                onOpen = onOpen,
                 edgeTransformLookup = edgeTransformLookup,
                 modifier = modifier,
             )
