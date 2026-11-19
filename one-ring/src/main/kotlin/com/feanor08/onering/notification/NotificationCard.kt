@@ -138,6 +138,7 @@ internal fun NotificationCard(
                             setOffset = { offsetX = it },
                             onDismiss = onDismiss,
                             onTap = onTap,
+                            dismissEnabled = notification.dismissible,
                         )
                     }
                 } else {
@@ -166,18 +167,18 @@ internal fun NotificationCard(
                 // then check *ancestor* InvisibleToUser to determine
                 // reachability, rather than the description's mere presence
                 // implying interactivity.
-                if (interactive) {
+                if (interactive && notification.dismissible) {
                     customActions = listOf(
                         CustomAccessibilityAction(label = "Dismiss ${notification.title} notification") {
                             onDismiss()
                             true
                         },
                     )
-                    if (onTap != null && tapAccessibilityLabel != null) {
-                        onClick(label = tapAccessibilityLabel) {
-                            onTap()
-                            true
-                        }
+                }
+                if (interactive && onTap != null && tapAccessibilityLabel != null) {
+                    onClick(label = tapAccessibilityLabel) {
+                        onTap()
+                        true
                     }
                 }
             }
@@ -220,12 +221,16 @@ internal fun NotificationCard(
                         )
                     }
                 }
-                DismissButton(
-                    tint = notification.accentColor,
-                    title = notification.title,
-                    interactive = interactive,
-                    onDismiss = onDismiss,
-                )
+                if (notification.dismissible) {
+                    DismissButton(
+                        tint = notification.accentColor,
+                        title = notification.title,
+                        interactive = interactive,
+                        onDismiss = onDismiss,
+                    )
+                } else {
+                    Spacer(modifier = Modifier.size(DismissTargetSize))   // keeps the card's layout: no X for a notification that cannot be dismissed
+                }
             }
             Spacer(modifier = Modifier.size(4.dp))
             Column {
@@ -338,6 +343,7 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
     setOffset: (Float) -> Unit,
     onDismiss: () -> Unit,
     onTap: (() -> Unit)? = null,
+    dismissEnabled: Boolean = true,
 ) {
     val touchSlop = viewConfiguration.touchSlop
     awaitEachGesture {
@@ -388,7 +394,7 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
                 totalDx += dx
                 totalDy += dy
                 when {
-                    abs(totalDx) > touchSlop && abs(totalDx) > abs(totalDy) * SWIPE_OVERSHOOT_FRACTION && totalDx < 0 -> {
+                    abs(totalDx) > touchSlop && abs(totalDx) > abs(totalDy) * SWIPE_OVERSHOOT_FRACTION && totalDx < 0 && dismissEnabled -> {
                         locked = true
                     }
                     abs(totalDy) > touchSlop && abs(totalDy) >= abs(totalDx) -> {

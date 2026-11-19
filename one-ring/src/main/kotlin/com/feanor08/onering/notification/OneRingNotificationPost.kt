@@ -29,6 +29,9 @@ import com.feanor08.onering.OneRingIcon
  * @param message the message appended to the thread on this post.
  * @param timestampLabel optional caller-formatted timestamp; like
  *   [subtitle], a later post omitting this keeps the existing value.
+ * @param dismissible false for a notification the rider must not be able to clear (a vehicle fault, a pending update): its card draws no X and
+ *   ignores the swipe. The consumer still removes it itself with [OneRingNotificationState.dismiss] when the condition ends. The latest post's value
+ *   wins for a thread. Default true.
  */
 @Immutable
 public data class OneRingNotificationPost(
@@ -42,4 +45,5 @@ public data class OneRingNotificationPost(
     public val subtitle: String? = null,
     public val message: String,
     public val timestampLabel: String? = null,
+    public val dismissible: Boolean = true,
 )

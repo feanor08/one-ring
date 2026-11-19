@@ -41,6 +41,7 @@ internal data class NotificationFeed(
                 messages = existing.messages + post.message,
                 timestampLabel = post.timestampLabel ?: existing.timestampLabel,
                 sequence = nextSequence,
+                dismissible = post.dismissible,
             )
         } else {
             OneRingNotification(
@@ -55,6 +56,7 @@ internal data class NotificationFeed(
                 messages = listOf(post.message),
                 timestampLabel = post.timestampLabel,
                 sequence = nextSequence,
+                dismissible = post.dismissible,
             )
         }
         return copy(threadsByKey = threadsByKey + (post.threadKey to merged), nextSequence = nextSequence + 1)

@@ -195,4 +195,14 @@ class NotificationFeedTest {
         assertTrue(feed.groupedBySource().isEmpty())
         assertNull(feed.groupedBySource().firstOrNull())
     }
+
+    @Test fun `a post is dismissible by default and a non-dismissible one stays so until the consumer dismisses it`() {
+        val normal = NotificationFeed().post(post("chat:a"))
+        assertTrue(normal.threadsNewestFirst().single().dismissible)
+        val fault = NotificationFeed().post(post("fault:1").copy(dismissible = false))
+        assertFalse(fault.threadsNewestFirst().single().dismissible)
+        // the latest post's value wins for a thread, and the consumer can still remove it programmatically
+        assertTrue(fault.post(post("fault:1").copy(dismissible = true)).threadsNewestFirst().single().dismissible)
+        assertTrue(fault.dismiss("fault:1").isEmpty)
+    }
 }
