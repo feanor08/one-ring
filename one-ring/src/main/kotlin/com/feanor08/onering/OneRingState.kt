@@ -40,6 +40,8 @@ public class OneRingState internal constructor(initialPath: List<String>) {
         internal set
 
     internal var touching: Boolean by mutableStateOf(false)
+    /** The ring's live outline, for the feature badges (set by [OneRing] as it composes). */
+    internal var outline: com.feanor08.onering.internal.RingOutline? by mutableStateOf(null)
     internal var phase: Phase by mutableStateOf(Phase.Settled)
     internal var seekSession: SeekSession? by mutableStateOf(null)
 

@@ -55,4 +55,15 @@ public data class OneRingDimensions internal constructor(
      * dominant, legible signal even while scrubbing across a toggle wedge.
      */
     public val toggleHighlightGrowthFraction: Float,
+    /**
+     * True leaves the same gap between a submenu's first and last child and the wedge that opened it (the ✕) as there is between the children
+     * themselves. False (the default) lets the children run straight up to it, as the original design did.
+     */
+    public val submenuParentGap: Boolean = false,
+    /**
+     * True makes a submenu open as a morph of the ring instead of a collapse and a regrow: the submenu is meant to sit in the main ring's own
+     * band, the other wedges fade into the children as the children's spans slide from theirs, and closing is the same motion backwards.
+     * False (the default) is the original choreography, siblings collapsing inward while the submenu grows in from its outer edge.
+     */
+    public val submenuMorph: Boolean = false,
 )

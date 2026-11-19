@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import com.feanor08.onering.geometry.RadialBand
 import com.feanor08.onering.internal.RingContentLayer
 import com.feanor08.onering.internal.RingFrameBuilder
 import com.feanor08.onering.internal.RingInteractionController
+import com.feanor08.onering.internal.RingOutline
 import com.feanor08.onering.internal.RingPathPool
 import com.feanor08.onering.internal.RingSemanticsLayer
 import com.feanor08.onering.internal.currentSubmenu
@@ -27,7 +29,9 @@ import com.feanor08.onering.internal.effectiveMotion
 import com.feanor08.onering.internal.lerp
 import com.feanor08.onering.internal.rememberAnimationsEnabled
 import com.feanor08.onering.internal.resolveRing
+import com.feanor08.onering.internal.lerpSpan
 import com.feanor08.onering.internal.submenuChildSpans
+import com.feanor08.onering.internal.submenuMorphSources
 import com.feanor08.onering.internal.warnIfCoreOverlayOverlapsMainRing
 import com.feanor08.onering.internal.warnIfTargetsTooSmall
 import com.feanor08.onering.style.OneRingStyle
@@ -170,6 +174,43 @@ public fun OneRing(
         }
         val mainSiblingReveal = state.mainSiblingReveal.value.coerceIn(0f, 1f)
 
+        // A morphing submenu (see OneRingDimensions.submenuMorph): the other wedges fade out as the children fade in, each child's span sliding from
+        // the sibling's it replaces, so the ring reads as one shape changing instead of wedges collapsing and others growing back.
+        val morph = style.dimensions.submenuMorph && submenu != null && parentSpan != null
+        val morphReveal = if (morph) state.submenuReveal.value.coerceIn(0f, 1f) else 0f
+        val morphSpans: List<com.feanor08.onering.geometry.AngularSpan>? = if (morph) {
+            val target = submenuChildSpans(resolved, style.dimensions, parentSpan!!, submenu!!.second)
+            val source = submenuMorphSources(resolved.mainSpans, items.indexOfFirst { it.id == submenu.first.id }, target)
+            target.mapIndexed { i, t -> lerpSpan(source[i], t, morphReveal) }
+        } else null
+        val mainAlphaOf: (String) -> Float = if (morph) { id -> if (id == activeMainItemId) alphaOf(id) else alphaOf(id) * (1f - morphReveal) } else alphaOf
+
+        // The ring's live outline, for anything drawn outside it that has to keep its distance (the feature badges, see OneRingFeatures). It reads the same
+        // animated radii the wedges are drawn with, whenever it is asked.
+        val outline = RingOutline(resolved.centerPx, resolved.mainOuterPx) {
+            val reaches = ArrayList<RingOutline.Reach>()
+            items.forEachIndexed { i, item ->
+                val span = resolved.mainSpans.getOrNull(i) ?: return@forEachIndexed
+                val isToggle = item is OneRingItem.Toggle
+                val base = resolved.mainOuterFor(expansionOf(item.id), if (isToggle) toggleProgressOf(item.id) else null)
+                val outer = if (item.id == activeMainItemId) base else lerp(resolved.mainInnerPx, base, mainSiblingReveal)
+                reaches += RingOutline.Reach(span.midDeg, span.sweepDeg / 2f, lerp(resolved.mainInnerPx, outer, mainAlphaOf(item.id).coerceIn(0f, 1f)))
+            }
+            if (submenu != null && parentSpan != null) {
+                val children = submenu.second
+                val childSpans = morphSpans ?: submenuChildSpans(resolved, style.dimensions, parentSpan, children)
+                val reveal = state.submenuReveal.value.coerceIn(0f, 1f)
+                children.forEachIndexed { i, child ->
+                    val span = childSpans.getOrNull(i) ?: return@forEachIndexed
+                    val isToggle = child is OneRingItem.Toggle
+                    val outer = resolved.submenuOuterFor(expansionOf(child.id).coerceIn(0f, 1f), if (isToggle) toggleProgressOf(child.id) else null)
+                    reaches += RingOutline.Reach(span.midDeg, span.sweepDeg / 2f, lerp(resolved.mainInnerPx, outer, (alphaOf(child.id) * reveal).coerceIn(0f, 1f)))
+                }
+            }
+            reaches
+        }
+        SideEffect { state.outline = outline }
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -180,7 +221,7 @@ public fun OneRing(
                 resolved = resolved,
                 colors = style.colors,
                 expansionOf = expansionOf,
-                alphaOf = alphaOf,
+                alphaOf = mainAlphaOf,
                 highlightedId = state.highlightedId,
                 mainSiblingRevealProgress = mainSiblingReveal,
                 activeItemId = activeMainItemId,
@@ -199,6 +240,7 @@ public fun OneRing(
                     alphaOf = alphaOf,
                     highlightedId = state.highlightedId,
                     toggleProgressOf = toggleProgressOf,
+                    spans = morphSpans,
                 )
                 frame = frame.copy(arcs = frame.arcs + submenuArcs)
             }
@@ -269,14 +311,14 @@ public fun OneRing(
                 val base = resolved.mainOuterFor(expansionOf(id), if (isToggle) toggleProgressOf(id) else null)
                 if (id == activeMainItemId) base else lerp(resolved.mainInnerPx, base, mainSiblingReveal)
             },
-            alphaOf = alphaOf,
+            alphaOf = mainAlphaOf,
             iconAlphaOf = iconAlphaOf,
             backIconAlphaOf = backIconAlphaOf,
         )
 
         if (submenu != null && parentSpan != null) {
             val (_, children) = submenu
-            val childSpans = submenuChildSpans(resolved, style.dimensions, parentSpan, children)
+            val childSpans = morphSpans ?: submenuChildSpans(resolved, style.dimensions, parentSpan, children)
             // Content rides the wedge as it grows: the same reveal-lerped inner
             // radius the arcs use, so icons travel inward with their sector
             // instead of sitting at the final radius while the shape catches up.
@@ -284,7 +326,7 @@ public fun OneRing(
             RingContentLayer(
                 items = children,
                 spans = childSpans,
-                innerPx = lerp(resolved.submenuOuterPx, resolved.submenuInnerPx, reveal),
+                innerPx = if (morph) resolved.submenuInnerPx else lerp(resolved.submenuOuterPx, resolved.submenuInnerPx, reveal),
                 centerPx = resolved.centerPx,
                 colors = style.colors,
                 highlightedId = state.highlightedId,

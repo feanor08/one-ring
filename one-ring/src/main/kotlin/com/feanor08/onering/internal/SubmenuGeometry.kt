@@ -18,6 +18,7 @@ internal fun submenuChildSpans(
 ): List<AngularSpan> = SubmenuLayout.weighted(
     parent = parentSpan,
     weights = children.map { it.weight },
+    edgePaddingDeg = if (dimensions.submenuParentGap) resolved.submenuGapDeg else 0f,
     gapDeg = resolved.submenuGapDeg,
     maxChildSweepDeg = dimensions.maxSubmenuItemSweepDeg,
     alignment = dimensions.submenuAlignment,
