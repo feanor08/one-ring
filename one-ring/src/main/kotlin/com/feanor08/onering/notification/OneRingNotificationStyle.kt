@@ -139,4 +139,8 @@ public data class OneRingNotificationStyle internal constructor(
     public val colors: OneRingNotificationColors,
     public val dimensions: OneRingNotificationDimensions,
     public val motion: OneRingNotificationMotion,
+    /** Draw the line under the title (the source's label and, on a stack's front card, its thread count). Default true. */
+    public val showSubtitle: Boolean = true,
+    /** Draw the X on each card. The swipe-to-dismiss gesture is unaffected. Default true. */
+    public val showDismissButton: Boolean = true,
 )

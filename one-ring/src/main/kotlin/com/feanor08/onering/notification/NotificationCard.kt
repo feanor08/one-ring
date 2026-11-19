@@ -201,36 +201,38 @@ internal fun NotificationCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        // The source's thread count sits on the subtitle line, not beside the title: on a narrow circular card it used to squeeze the
-                        // title down to an ellipsis, and the sender's name is the one thing that has to stay readable.
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            BasicText(
-                                text = subtitle,
-                                style = TextStyle(color = notification.accentColor, fontSize = 12.sp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
-                            )
-                            sourceStackLabel?.let { label ->
-                                Spacer(modifier = Modifier.width(6.dp))
+                        if (style.showSubtitle) {
+                            // The source's thread count sits on the subtitle line, not beside the title: on a narrow circular card it used to squeeze the
+                            // title down to an ellipsis, and the sender's name is the one thing that has to stay readable.
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                                 BasicText(
-                                    text = label,
-                                    style = TextStyle(color = style.colors.secondaryText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                                    text = subtitle,
+                                    style = TextStyle(color = notification.accentColor, fontSize = 12.sp),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
                                 )
+                                sourceStackLabel?.let { label ->
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    BasicText(
+                                        text = label,
+                                        style = TextStyle(color = style.colors.secondaryText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
                     }
                 }
-                if (notification.dismissible) {
+                if (notification.dismissible && style.showDismissButton) {
                     DismissButton(
                         tint = notification.accentColor,
                         title = notification.title,
                         interactive = interactive,
                         onDismiss = onDismiss,
                     )
-                } else {
+                } else if (style.showDismissButton) {
                     Spacer(modifier = Modifier.size(DismissTargetSize))   // keeps the card's layout: no X for a notification that cannot be dismissed
                 }
             }

@@ -18,7 +18,9 @@ public object OneRingNotificationDefaults {
         colors: OneRingNotificationColors = colors(),
         dimensions: OneRingNotificationDimensions = dimensions(),
         motion: OneRingNotificationMotion = motion(),
-    ): OneRingNotificationStyle = OneRingNotificationStyle(colors, dimensions, motion)
+        showSubtitle: Boolean = true,
+        showDismissButton: Boolean = true,
+    ): OneRingNotificationStyle = OneRingNotificationStyle(colors, dimensions, motion, showSubtitle, showDismissButton)
 
     /** A dark host surface: near-black cards, near-white title, light-grey body. This is [style]'s default. */
     public fun colors(
