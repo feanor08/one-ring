@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -126,6 +127,7 @@ internal fun NotificationCard(
     val subtitle = if (countOnly) countSubtitle(notification) else displaySubtitle(notification)
 
     Box(
+        contentAlignment = if (countOnly) Alignment.CenterStart else Alignment.TopStart,
         modifier = modifier
             .fillMaxWidth()
             .onSizeChanged { widthPx = it.width.toFloat() }
@@ -208,7 +210,7 @@ internal fun NotificationCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        if (style.showSubtitle) {
+                        if (style.showSubtitle && !countOnly) {
                             // The source's thread count sits on the subtitle line, not beside the title: on a narrow circular card it used to squeeze the
                             // title down to an ellipsis, and the sender's name is the one thing that has to stay readable.
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -230,6 +232,20 @@ internal fun NotificationCard(
                                 }
                             }
                         }
+                    }
+                }
+                if (countOnly) {
+                    // WhatsApp icon, sender, and at the far right how many messages the thread has: 1, 2, 3
+                    val count = maxOf(1, notification.messages.size)
+                    Box(
+                        modifier = Modifier.align(Alignment.CenterVertically).clip(RoundedCornerShape(10.dp))
+                            .background(notification.accentColor.copy(alpha = 0.22f)).padding(horizontal = 8.dp, vertical = 1.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        BasicText(
+                            text = "$count",
+                            style = TextStyle(color = notification.accentColor, fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                        )
                     }
                 }
                 if (notification.dismissible && style.showDismissButton) {
