@@ -6,7 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -104,7 +106,8 @@ internal fun NotificationArrivalOverlay(
             .background(style.colors.arrivalBackground)
             .border(BorderStroke(5.dp, notification.accentColor), shape)
     } else {
-        Modifier.fillMaxSize().graphicsLayer {
+        // The slab is exactly a card (its width and its collapsed height), at the top of the feed: the arrival is never bigger than the messages it announces.
+        Modifier.width(rect.cardWidth).height(rect.cardMaxCollapsedHeight).graphicsLayer {
             alpha = exitAlpha.value
             translationY = -rect.arrivalTravel.toPx() * (1f - growProgress.value)
         }
@@ -113,26 +116,30 @@ internal fun NotificationArrivalOverlay(
             .border(BorderStroke(style.dimensions.borderWidth, notification.accentColor), shape)
     }
 
-    Box(
-        modifier = arrivalModifier
-            .clearAndSetSemantics {
-                liveRegion = LiveRegionMode.Polite
-                contentDescription = "New notification: ${notification.title}"
-            },
-        contentAlignment = Alignment.Center,
-    ) {
+    val iconSize = if (rect == null) ArrivalIconSize else rect.cardMaxCollapsedHeight - 12.dp
+    val slab: @Composable () -> Unit = {
         Box(
-            modifier = Modifier
-                .size(ArrivalIconSize)
-                .graphicsLayer {
-                    alpha = iconProgress.value
-                    val scale = 0.7f + 0.3f * iconProgress.value
-                    scaleX = scale
-                    scaleY = scale
+            modifier = arrivalModifier
+                .clearAndSetSemantics {
+                    liveRegion = LiveRegionMode.Polite
+                    contentDescription = "New notification: ${notification.title}"
                 },
             contentAlignment = Alignment.Center,
         ) {
-            RenderIcon(icon = arrivalIcon, tint = notification.accentColor, size = ArrivalIconSize)
+            Box(
+                modifier = Modifier
+                    .size(iconSize)
+                    .graphicsLayer {
+                        alpha = iconProgress.value
+                        val scale = 0.7f + 0.3f * iconProgress.value
+                        scaleX = scale
+                        scaleY = scale
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                RenderIcon(icon = arrivalIcon, tint = notification.accentColor, size = iconSize)
+            }
         }
     }
+    if (rect == null) slab() else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) { slab() }
 }
