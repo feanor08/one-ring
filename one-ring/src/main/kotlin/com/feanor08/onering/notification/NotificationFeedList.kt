@@ -93,6 +93,7 @@ internal fun NotificationFeedList(
     androidx.compose.runtime.CompositionLocalProvider(
         LocalCardVerticalPadding provides (rect?.cardVerticalPadding ?: 8.dp),
         LocalCountOnlySubtitle provides (rect?.countOnlySubtitle == true),
+        LocalCardMaxHeight provides rect?.cardMaxCollapsedHeight,
     ) {
     if (interactive) {
         val listState = rememberLazyListState()

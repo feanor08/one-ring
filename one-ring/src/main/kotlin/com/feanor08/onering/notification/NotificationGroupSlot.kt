@@ -164,7 +164,8 @@ internal fun NotificationGroupSlot(
                         },
                         modifier = Modifier
                             .width(maxCardWidthDp)
-                            .heightIn(min = minCardHeightDp)
+                            // Rectangular feeds: the card is laid out at the collapsed height, so its border is whole (clipping a taller card cut the bottom border off).
+                            .heightIn(min = minCardHeightDp, max = LocalCardMaxHeight.current ?: Dp.Unspecified)
                             .then(if (semanticsHidden) Modifier.clearAndSetSemantics {} else Modifier),
                     )
                 }

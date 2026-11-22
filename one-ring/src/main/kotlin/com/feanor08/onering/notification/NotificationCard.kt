@@ -428,3 +428,6 @@ internal val LocalCardVerticalPadding = androidx.compose.runtime.compositionLoca
 
 /** True while the feed asks for count-only subtitles (see [OneRingNotificationPresentation.Rectangular.countOnlySubtitle]). */
 internal val LocalCountOnlySubtitle = androidx.compose.runtime.compositionLocalOf { false }
+
+/** Set by a rectangular feed to its collapsed card height: a stack's cards are laid out at it (not clipped from a taller card). Null in the circular feed. */
+internal val LocalCardMaxHeight = androidx.compose.runtime.compositionLocalOf<androidx.compose.ui.unit.Dp?> { null }
