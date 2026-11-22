@@ -113,6 +113,8 @@ public object OneRingDefaults {
         seekThumbRadius: Dp = 7.dp,
         toggleRestOffsetFraction: Float = 0.45f,
         toggleHighlightGrowthFraction: Float = 0.22f,
+        submenuParentGap: Boolean = false,
+        submenuMorph: Boolean = false,
     ): OneRingDimensions = OneRingDimensions(
         mainInner = mainInner,
         mainOuter = mainOuter,
@@ -133,6 +135,8 @@ public object OneRingDefaults {
         seekThumbRadius = seekThumbRadius,
         toggleRestOffsetFraction = toggleRestOffsetFraction,
         toggleHighlightGrowthFraction = toggleHighlightGrowthFraction,
+        submenuParentGap = submenuParentGap,
+        submenuMorph = submenuMorph,
     )
 
     public fun motion(

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -57,6 +58,7 @@ private val ArrivalIconSize = 56.dp
 internal fun NotificationArrivalOverlay(
     notification: OneRingNotification,
     style: OneRingNotificationStyle,
+    presentation: OneRingNotificationPresentation = OneRingNotificationPresentation.Circular,
     animationsEnabled: Boolean,
     onReveal: () -> Unit,
     onFinished: () -> Unit,
@@ -88,17 +90,31 @@ internal fun NotificationArrivalOverlay(
 
     val arrivalIcon = notification.sourceIcon.takeIf { it != OneRingIcon.None } ?: notification.icon
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                alpha = exitAlpha.value
-                scaleX = growProgress.value
-                scaleY = growProgress.value
-            }
-            .clip(CircleShape)
+    val rect = presentation as? OneRingNotificationPresentation.Rectangular
+    // Circular: a circle that grows from a point. Rectangular: a translucent slab, as big as the feed, that slides down from above it (the same grow
+    // progress, so the same timing); it is translucent, but what shows through is the feed as it was before the arrival, never the new card.
+    val shape = if (rect == null) CircleShape else RoundedCornerShape(style.dimensions.cornerRadius)
+    val arrivalModifier = if (rect == null) {
+        Modifier.fillMaxSize().graphicsLayer {
+            alpha = exitAlpha.value
+            scaleX = growProgress.value
+            scaleY = growProgress.value
+        }
+            .clip(shape)
             .background(style.colors.arrivalBackground)
-            .border(BorderStroke(5.dp, notification.accentColor), CircleShape)
+            .border(BorderStroke(5.dp, notification.accentColor), shape)
+    } else {
+        Modifier.fillMaxSize().graphicsLayer {
+            alpha = exitAlpha.value
+            translationY = -rect.arrivalTravel.toPx() * (1f - growProgress.value)
+        }
+            .clip(shape)
+            .background(style.colors.arrivalBackground.copy(alpha = rect.arrivalAlpha))
+            .border(BorderStroke(style.dimensions.borderWidth, notification.accentColor), shape)
+    }
+
+    Box(
+        modifier = arrivalModifier
             .clearAndSetSemantics {
                 liveRegion = LiveRegionMode.Polite
                 contentDescription = "New notification: ${notification.title}"

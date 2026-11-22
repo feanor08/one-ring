@@ -86,10 +86,12 @@ internal object RingFrameBuilder {
         alphaOf: (itemId: String) -> Float = { 1f },
         highlightedId: String? = null,
         toggleProgressOf: (itemId: String) -> Float = { 0f },
+        // A morphing submenu draws at its own radii the whole time and slides these spans instead (see submenuMorphSources).
+        spans: List<AngularSpan>? = null,
     ): List<ArcVisual> {
-        val childSpans = submenuChildSpans(resolved, dimensions, parentSpan, children)
+        val childSpans = spans ?: submenuChildSpans(resolved, dimensions, parentSpan, children)
         val clampedReveal = reveal.coerceIn(0f, 1f)
-        val innerPx = lerp(resolved.submenuOuterPx, resolved.submenuInnerPx, clampedReveal)
+        val innerPx = if (dimensions.submenuMorph) resolved.submenuInnerPx else lerp(resolved.submenuOuterPx, resolved.submenuInnerPx, clampedReveal)
 
         return buildArcs(
             items = children,

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,27 +69,39 @@ internal fun NotificationFeedList(
     onDismiss: (String) -> Unit,
     onToggleExpanded: (String) -> Unit,
     modifier: Modifier = Modifier,
+    presentation: OneRingNotificationPresentation = OneRingNotificationPresentation.Circular,
+    onCardTap: ((sourceKey: String, threadKey: String) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
+    // Rectangular: absolute sizes, no circular clip, no narrowing; the other values are the style's own. Circular: exactly as before.
+    val rect = presentation as? OneRingNotificationPresentation.Rectangular
+    val feedStyle = if (rect == null) style else style.copy(
+        dimensions = style.dimensions.copy(
+            edgeWidthReductionFraction = 0f, edgeAlphaReductionFraction = rect.edgeAlphaReduction,
+            cardSpacing = rect.cardSpacing, groupSpacing = rect.groupSpacing,
+        ),
+    )
+    val feedShape = if (rect == null) CircleShape else RectangleShape
 
-    val maxCardWidthDp = with(density) { (coreOverlayDiameterPx * style.dimensions.maxCardWidthFraction).toDp() }
-    val minCardHeightDp = with(density) { (coreOverlayDiameterPx * style.dimensions.minCardHeightFraction).toDp() }
-    val collapsedCardMaxHeightDp = with(density) { (coreOverlayDiameterPx * style.dimensions.collapsedCardMaxHeightFraction).toDp() }
-    val topPaddingDp = with(density) { (coreOverlayDiameterPx * style.dimensions.topContentPaddingFraction).toDp() }
-    val bottomPaddingDp = with(density) { (coreOverlayDiameterPx * style.dimensions.bottomContentPaddingFraction).toDp() }
+    val maxCardWidthDp = rect?.cardWidth ?: with(density) { (coreOverlayDiameterPx * style.dimensions.maxCardWidthFraction).toDp() }
+    val minCardHeightDp = rect?.cardMinHeight ?: with(density) { (coreOverlayDiameterPx * style.dimensions.minCardHeightFraction).toDp() }
+    val collapsedCardMaxHeightDp = rect?.cardMaxCollapsedHeight ?: with(density) { (coreOverlayDiameterPx * style.dimensions.collapsedCardMaxHeightFraction).toDp() }
+    val topPaddingDp = if (rect != null) 0.dp else with(density) { (coreOverlayDiameterPx * style.dimensions.topContentPaddingFraction).toDp() }
+    val bottomPaddingDp = if (rect != null) 0.dp else with(density) { (coreOverlayDiameterPx * style.dimensions.bottomContentPaddingFraction).toDp() }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalCardVerticalPadding provides (rect?.cardVerticalPadding ?: 8.dp)) {
     if (interactive) {
         val listState = rememberLazyListState()
         LazyColumn(
             state = listState,
-            modifier = modifier.fillMaxSize().clip(CircleShape),
+            modifier = modifier.fillMaxSize().clip(feedShape),
             contentPadding = PaddingValues(top = topPaddingDp, bottom = bottomPaddingDp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             groups.forEachIndexed { groupIndex, group ->
                 val itemKey = "group:${group.sourceKey}"
                 item(key = itemKey) {
-                    val topSpacing = if (groupIndex == 0) 0.dp else style.dimensions.groupSpacing
+                    val topSpacing = if (groupIndex == 0) 0.dp else feedStyle.dimensions.groupSpacing
                     val edgeTransformLookup = GroupEdgeTransformLookup {
                         val layoutInfo = listState.layoutInfo
                         val itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.key == itemKey }
@@ -96,7 +110,7 @@ internal fun NotificationFeedList(
                     }
                     SourceGroupContent(
                         group = group,
-                        style = style,
+                        style = feedStyle,
                         maxCardWidthDp = maxCardWidthDp,
                         minCardHeightDp = minCardHeightDp,
                         collapsedCardMaxHeightDp = collapsedCardMaxHeightDp,
@@ -104,6 +118,8 @@ internal fun NotificationFeedList(
                         expandedSourceKey = expandedSourceKey,
                         onDismiss = onDismiss,
                         onToggleExpanded = onToggleExpanded,
+                        rectangular = rect != null,
+                        onCardTap = onCardTap,
                         edgeTransformLookup = edgeTransformLookup,
                         modifier = Modifier.padding(top = topSpacing),
                     )
@@ -112,14 +128,14 @@ internal fun NotificationFeedList(
         }
     } else {
         Column(
-            modifier = modifier.fillMaxSize().clip(CircleShape).padding(top = topPaddingDp, bottom = bottomPaddingDp),
+            modifier = modifier.fillMaxSize().clip(feedShape).padding(top = topPaddingDp, bottom = bottomPaddingDp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             groups.forEachIndexed { groupIndex, group ->
-                val topSpacing = if (groupIndex == 0) 0.dp else style.dimensions.groupSpacing
+                val topSpacing = if (groupIndex == 0) 0.dp else feedStyle.dimensions.groupSpacing
                 SourceGroupContent(
                     group = group,
-                    style = style,
+                    style = feedStyle,
                     maxCardWidthDp = maxCardWidthDp,
                     minCardHeightDp = minCardHeightDp,
                     collapsedCardMaxHeightDp = collapsedCardMaxHeightDp,
@@ -127,11 +143,14 @@ internal fun NotificationFeedList(
                     expandedSourceKey = expandedSourceKey,
                     onDismiss = onDismiss,
                     onToggleExpanded = onToggleExpanded,
+                    rectangular = rect != null,
+                    onCardTap = onCardTap,
                     edgeTransformLookup = null,
                     modifier = Modifier.padding(top = topSpacing),
                 )
             }
         }
+    }
     }
 }
 
@@ -154,6 +173,8 @@ private fun SourceGroupContent(
     expandedSourceKey: String?,
     onDismiss: (String) -> Unit,
     onToggleExpanded: (String) -> Unit,
+    rectangular: Boolean,
+    onCardTap: ((sourceKey: String, threadKey: String) -> Unit)?,
     edgeTransformLookup: GroupEdgeTransformLookup?,
     modifier: Modifier = Modifier,
 ) {
@@ -165,9 +186,12 @@ private fun SourceGroupContent(
                 style = style,
                 interactive = interactive,
                 onDismiss = { onDismiss(thread.threadKey) },
+                // Rectangular: a tap reports the card (there is no room to expand), and a long one is clipped at the collapsed ceiling.
+                onTap = if (rectangular && onCardTap != null) ({ onCardTap(group.sourceKey, thread.threadKey) }) else null,
                 modifier = modifier
                     .width(maxCardWidthDp)
-                    .heightIn(min = minCardHeightDp)
+                    .heightIn(min = minCardHeightDp, max = if (rectangular) collapsedCardMaxHeightDp else Dp.Unspecified)
+                    .then(if (rectangular) Modifier.clipToBounds() else Modifier)
                     .circleEdgeGraphicsLayer(edgeTransformLookup, style.dimensions),
             )
         }
@@ -181,7 +205,8 @@ private fun SourceGroupContent(
                 interactive = interactive,
                 expanded = expandedSourceKey == group.sourceKey,
                 onDismiss = onDismiss,
-                onToggleExpanded = { onToggleExpanded(group.sourceKey) },
+                onToggleExpanded = if (rectangular && onCardTap != null) ({ onCardTap(group.sourceKey, group.threads.first().threadKey) })
+                else ({ onToggleExpanded(group.sourceKey) }),
                 edgeTransformLookup = edgeTransformLookup,
                 modifier = modifier,
             )

@@ -365,7 +365,7 @@ internal class RingInteractionController(private val state: OneRingState) {
         when (val item = children.firstOrNull { it.id == id }) {
             is OneRingItem.Action -> {
                 commitAction(item)
-                if (item.enabled) beginClose(parent.id)
+                if (item.enabled && item.closesSubmenu) beginClose(parent.id)
             }
             is OneRingItem.Seek -> if (item.enabled) {
                 beginSubmenuSeek(
@@ -416,8 +416,10 @@ internal class RingInteractionController(private val state: OneRingState) {
     private fun beginOpen(item: OneRingItem.Menu) {
         val m = motion ?: return
         state.phase = OneRingState.Phase.Opening(item.id)
+        val morph = dimensions?.submenuMorph == true
 
-        items.asSequence().filter { it.id != item.id }.forEach { sibling ->
+        // A morphing submenu leaves the other wedges where they are: the renderer fades them into the children as the reveal runs.
+        if (!morph) items.asSequence().filter { it.id != item.id }.forEach { sibling ->
             state.scope.launch { state.animations.of(sibling.id).expansion.animateTo(0f, m.hover) }
             state.scope.launch { state.animations.of(sibling.id).contentAlpha.animateTo(0f, m.siblingExit) }
         }
@@ -425,7 +427,7 @@ internal class RingInteractionController(private val state: OneRingState) {
         // time the parent grows and the submenu reveals -- the mirror of
         // beginClose's regrow -- so the whole ring reads as one continuous
         // transform instead of "selected item grows, the rest just vanishes".
-        state.scope.launch { state.mainSiblingReveal.animateTo(0f, m.select) }
+        if (!morph) state.scope.launch { state.mainSiblingReveal.animateTo(0f, m.select) }
 
         // Stage 1 of the icon -> X change: the original glyph fades out on its
         // own, before the X is given any opacity at all. See watchThenFade.
@@ -458,7 +460,7 @@ internal class RingInteractionController(private val state: OneRingState) {
             state.path = state.path + item.id
             // A short stagger so the parent visibly commits first; the two
             // animations still overlap for most of their duration.
-            delay(SUBMENU_REVEAL_STAGGER_MS)
+            if (!morph) delay(SUBMENU_REVEAL_STAGGER_MS)
             state.submenuReveal.animateTo(1f, m.submenuReveal)
 
             parentExpansion.join()
@@ -503,7 +505,10 @@ internal class RingInteractionController(private val state: OneRingState) {
             // off in the final 8% rather than waiting for the next draw frame,
             // which avoids a perceptible blank beat between the two motions.
             val shrink = launch { state.submenuReveal.animateTo(0f, m.submenuClose) }
-            while (state.submenuReveal.value > SUBMENU_CLOSE_HANDOFF_REVEAL) delay(GEOMETRY_POLL_MS)
+            // A morphing submenu closes in one motion, the children sliding back into the wedges while the parent returns; there is no hand-off.
+            if (dimensions?.submenuMorph != true) {
+                while (state.submenuReveal.value > SUBMENU_CLOSE_HANDOFF_REVEAL) delay(GEOMETRY_POLL_MS)
+            }
 
             items.asSequence().filter { it.id != parentId }.forEach { sibling ->
                 launch { state.animations.of(sibling.id).contentAlpha.animateTo(1f, m.siblingExit) }

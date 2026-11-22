@@ -54,6 +54,8 @@ public sealed interface OneRingItem {
         public val payload: Any? = null,
         override val weight: Float = 1f,
         public val holdMs: Long = 0L,
+        /** In a submenu: false keeps the submenu open after this action runs (a media control, say). Ignored on the main ring. */
+        public val closesSubmenu: Boolean = true,
     ) : OneRingItem {
         init {
             requireValidWeight(id, weight)

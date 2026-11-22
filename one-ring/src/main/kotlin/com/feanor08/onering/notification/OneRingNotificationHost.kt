@@ -110,6 +110,8 @@ public fun OneRingNotificationHost(
     visible: Boolean,
     modifier: Modifier = Modifier,
     style: OneRingNotificationStyle = OneRingNotificationDefaults.style(),
+    presentation: OneRingNotificationPresentation = OneRingNotificationPresentation.Circular,
+    onCardTap: ((sourceKey: String, threadKey: String) -> Unit)? = null,
 ) {
     val animationsEnabled = rememberAnimationsEnabled()
     val feedAlpha = remember { Animatable(if (visible) 1f else 0f) }
@@ -150,7 +152,10 @@ public fun OneRingNotificationHost(
     // What actually renders expanded this frame -- see the field doc above.
     // Derived from `displayedGroups` (what's on screen), not raw `state.groups`,
     // so expansion never describes something behind the arrival splash.
-    val effectiveExpandedSourceKey = effectiveExpandedSourceKey(storedExpandedSourceKey, displayedGroups)
+    // A rectangular feed has no room to expand in place: a tap is reported through onCardTap instead, so nothing is ever expanded.
+    val effectiveExpandedSourceKey =
+        if (presentation is OneRingNotificationPresentation.Rectangular) null
+        else effectiveExpandedSourceKey(storedExpandedSourceKey, displayedGroups)
 
     // If the stored intent has gone stale (its source vanished or dropped to
     // one thread), rendering above already reads the correct (null) effective
@@ -208,6 +213,8 @@ public fun OneRingNotificationHost(
                 coreOverlayDiameterPx = diameterPx,
                 interactive = interactive,
                 expandedSourceKey = effectiveExpandedSourceKey,
+                presentation = presentation,
+                onCardTap = onCardTap,
                 onDismiss = { threadKey -> state.dismiss(threadKey) },
                 onToggleExpanded = { sourceKey ->
                     storedExpandedSourceKey = toggleExpanded(storedExpandedSourceKey, sourceKey)
@@ -219,6 +226,7 @@ public fun OneRingNotificationHost(
             NotificationArrivalOverlay(
                 notification = notification,
                 style = style,
+                presentation = presentation,
                 animationsEnabled = animationsEnabled,
                 onReveal = { safeGroups = state.groups },
                 onFinished = {

@@ -181,7 +181,7 @@ internal fun NotificationCard(
                     }
                 }
             }
-            .padding(horizontal = style.dimensions.horizontalContentPadding, vertical = 8.dp),
+            .padding(horizontal = style.dimensions.horizontalContentPadding, vertical = LocalCardVerticalPadding.current),
     ) {
         Column(modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = contentAlpha }) {
             Row(
@@ -405,3 +405,6 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
         }
     }
 }
+
+/** The space above and below a card's text: 8 dp, unless a rectangular feed (see [OneRingNotificationPresentation.Rectangular]) asks for less. */
+internal val LocalCardVerticalPadding = androidx.compose.runtime.compositionLocalOf { 8.dp }

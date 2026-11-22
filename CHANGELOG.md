@@ -11,6 +11,13 @@ Everything below has landed on `main` but nothing has been published anywhere
 other than a local Maven cache (`./gradlew :one-ring:publishToMavenLocal`).
 There is no `0.1.0` tag/release yet.
 
+### Added
+
+- `OneRingNotificationPresentation` (`Circular`, the default and unchanged, and `Rectangular`) and two optional parameters on the non-ring
+  `OneRingNotificationHost` overload (`presentation`, `onCardTap`). A rectangular feed uses absolute card sizes, is clipped to its own rectangle,
+  never narrows its cards, reports a tap on a card instead of expanding a group in place, and shows a new arrival as a translucent slab that slides down
+  from above the rectangle (same ordering guarantees as the circular arrival). Nothing about the ring or the circular feed changes.
+
 ### Changed (notification follow-up fixes)
 
 - **Fixed: a hidden `coreOverlay` could intercept a submenu/seek gesture.**
