@@ -90,7 +90,10 @@ internal fun NotificationFeedList(
     val topPaddingDp = if (rect != null) 0.dp else with(density) { (coreOverlayDiameterPx * style.dimensions.topContentPaddingFraction).toDp() }
     val bottomPaddingDp = if (rect != null) 0.dp else with(density) { (coreOverlayDiameterPx * style.dimensions.bottomContentPaddingFraction).toDp() }
 
-    androidx.compose.runtime.CompositionLocalProvider(LocalCardVerticalPadding provides (rect?.cardVerticalPadding ?: 8.dp)) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalCardVerticalPadding provides (rect?.cardVerticalPadding ?: 8.dp),
+        LocalCountOnlySubtitle provides (rect?.countOnlySubtitle == true),
+    ) {
     if (interactive) {
         val listState = rememberLazyListState()
         LazyColumn(

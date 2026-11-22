@@ -36,6 +36,11 @@ public sealed interface OneRingNotificationPresentation {
         public val edgeAlphaReduction: Float = 0.35f,
         /** The space above and below a card's text: 8 dp in the circular feed, less here, so a 40 dp card shows its title and its source line whole. */
         public val cardVerticalPadding: Dp = 4.dp,
+        /**
+         * True: a card's subtitle is just how many messages its thread has so far, "1 message", "2 messages", "3 messages" (and a stack's front card does not
+         * add the source's thread count). False: the source label with a "· N messages" suffix, as in the circular feed.
+         */
+        public val countOnlySubtitle: Boolean = false,
         /** How far above the rectangle's top the arrival slab starts. */
         public val arrivalTravel: Dp = 56.dp,
         /** The slab's opacity while it covers the feed: translucent, but the feed under it still shows the state from before the arrival. */

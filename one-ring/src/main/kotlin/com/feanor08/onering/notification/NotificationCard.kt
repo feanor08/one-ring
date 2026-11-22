@@ -74,6 +74,12 @@ internal fun displaySubtitle(notification: OneRingNotification): String {
     return if (count > 1) "$base · $count messages" else base
 }
 
+/** "1 message", "2 messages", "3 messages": the whole subtitle of a card in a feed whose presentation asks for the count only. */
+internal fun countSubtitle(notification: OneRingNotification): String {
+    val count = maxOf(1, notification.messages.size)
+    return if (count == 1) "1 message" else "$count messages"
+}
+
 /**
  * One notification thread's card: title, source/count subtitle, every
  * accumulated message, an X at the top-right, and swipe-left-to-dismiss.
@@ -116,7 +122,8 @@ internal fun NotificationCard(
     var offsetX by remember(notification.threadKey) { mutableFloatStateOf(0f) }
     var widthPx by remember { mutableFloatStateOf(0f) }
 
-    val subtitle = displaySubtitle(notification)
+    val countOnly = LocalCountOnlySubtitle.current
+    val subtitle = if (countOnly) countSubtitle(notification) else displaySubtitle(notification)
 
     Box(
         modifier = modifier
@@ -212,7 +219,7 @@ internal fun NotificationCard(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f, fill = false),
                                 )
-                                sourceStackLabel?.let { label ->
+                                sourceStackLabel?.takeIf { !countOnly }?.let { label ->
                                     Spacer(modifier = Modifier.width(6.dp))
                                     BasicText(
                                         text = label,
@@ -418,3 +425,6 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
 
 /** The space above and below a card's text: 8 dp, unless a rectangular feed (see [OneRingNotificationPresentation.Rectangular]) asks for less. */
 internal val LocalCardVerticalPadding = androidx.compose.runtime.compositionLocalOf { 8.dp }
+
+/** True while the feed asks for count-only subtitles (see [OneRingNotificationPresentation.Rectangular.countOnlySubtitle]). */
+internal val LocalCountOnlySubtitle = androidx.compose.runtime.compositionLocalOf { false }

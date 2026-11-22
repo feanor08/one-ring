@@ -23,4 +23,14 @@ class OneRingNotificationPresentationTest {
         assertThrows(IllegalArgumentException::class.java) { OneRingNotificationPresentation.Rectangular(244.dp, 36.dp, 40.dp, edgeAlphaReduction = 1.5f) }
         assertThrows(IllegalArgumentException::class.java) { OneRingNotificationPresentation.Rectangular(244.dp, 36.dp, 40.dp, arrivalAlpha = -0.1f) }
     }
+
+    @Test fun `a count-only subtitle is one, two, three messages`() {
+        fun n(count: Int) = OneRingNotification(
+            threadKey = "t", sourceKey = "S", sourceLabel = "WhatsApp", sourceIcon = com.feanor08.onering.OneRingIcon.None, icon = com.feanor08.onering.OneRingIcon.None,
+            accentColor = androidx.compose.ui.graphics.Color.Green, title = "Alice", subtitle = null, messages = List(count) { "m$it" }, timestampLabel = "", sequence = 1L, dismissible = true,
+        )
+        assertEquals("1 message", countSubtitle(n(1)))
+        assertEquals("2 messages", countSubtitle(n(2)))
+        assertEquals("3 messages", countSubtitle(n(3)))
+    }
 }
