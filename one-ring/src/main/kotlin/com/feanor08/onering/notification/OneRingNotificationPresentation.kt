@@ -41,6 +41,11 @@ public sealed interface OneRingNotificationPresentation {
          * and no thread count on a stack's front card. False: the source label with a "· N messages" suffix, as in the circular feed.
          */
         public val countOnlySubtitle: Boolean = false,
+        /**
+         * True: every notification is in one stack, newest in front, whatever its source (a chat, a fault and an update stack up together). False: one stack
+         * per source, the stacks listed one under the other, as in the circular feed.
+         */
+        public val singleStack: Boolean = false,
         /** How far above the rectangle's top the arrival slab starts. */
         public val arrivalTravel: Dp = 56.dp,
         /** The slab's opacity while it covers the feed: translucent, but the feed under it still shows the state from before the arrival. */

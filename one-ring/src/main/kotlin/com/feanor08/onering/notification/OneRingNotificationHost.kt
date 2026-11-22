@@ -1,6 +1,8 @@
 package com.feanor08.onering.notification
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -152,6 +154,8 @@ public fun OneRingNotificationHost(
     val latestForGate = state.latestSequence
     val arrivalPending = activeArrival != null || shouldPlayArrival(visible, latestForGate, lastAnnouncedSequence)
     var safeGroups by remember { mutableStateOf(state.groups) }
+    // True once the arrival that is playing has swapped the feed to its new content (see onReveal below).
+    var revealed by remember(activeArrival) { mutableStateOf(false) }
     if (!arrivalPending) {
         safeGroups = state.groups
     }
@@ -209,12 +213,29 @@ public fun OneRingNotificationHost(
         // class doc's "Arrival ordering" section).
         val interactive = visible && activeArrival == null
 
+        // Rectangular feed: the banner of a notification that makes a NEW row comes down into the first row's place, and the rows already there flow down
+        // with it, one row's height, as it descends (the grow's own motion), so the gap is open when it lands. At the reveal the new row takes the gap
+        // (the push goes back to zero at the same instant: nothing moves). A notification for a row that exists (a card into a stack) pushes nothing.
+        val rect = presentation as? OneRingNotificationPresentation.Rectangular
+        val arriving = activeArrival
+        val newRowComing = rect != null && arriving != null && !revealed && displayedGroups.none { it.sourceKey == arriving.sourceKey }
+        val pushTargetPx = if (newRowComing && rect != null) with(density) { (rect.cardMaxCollapsedHeight + rect.groupSpacing).toPx() } else 0f
+        val pushPx by animateFloatAsState(
+            targetValue = pushTargetPx,
+            animationSpec = if (pushTargetPx == 0f) snap() else style.motion.arrivalGrow,
+            label = "newRowPush",
+        )
+        // The push is read straight from the target when there is none, so the reveal's frame (new row in, push gone) is one frame, not two.
+        val pushNow = { if (pushTargetPx == 0f) 0f else pushPx }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { alpha = feedAlpha.value }
+                .graphicsLayer { alpha = feedAlpha.value; clip = true }
                 .semantics { if (!visible) invisibleToUser() },
         ) {
+          // The rows flow down with a translation (not list padding), so the list's own item animations do not fight it; the box above clips what leaves the bottom.
+          Box(Modifier.fillMaxSize().graphicsLayer { translationY = pushNow() }) {
             NotificationFeedList(
                 groups = displayedGroups,
                 style = style,
@@ -229,6 +250,7 @@ public fun OneRingNotificationHost(
                 },
                 onOpen = onNotificationClick,
             )
+          }
         }
 
         activeArrival?.let { notification ->
@@ -237,7 +259,7 @@ public fun OneRingNotificationHost(
                 style = style,
                 presentation = presentation,
                 animationsEnabled = animationsEnabled,
-                onReveal = { safeGroups = state.groups },
+                onReveal = { safeGroups = state.groups; revealed = true },
                 onFinished = {
                     lastAnnouncedSequence = advancedWatermark(notification.sequence)
                     activeArrival = null

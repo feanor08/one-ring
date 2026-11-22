@@ -46,4 +46,9 @@ public data class OneRingNotificationPost(
     public val message: String,
     public val timestampLabel: String? = null,
     public val dismissible: Boolean = true,
+    /**
+     * The small label at the far right of a count-only (rectangular feed) card: what a kind of notification wants to say about itself ("CRITICAL", "Update", an ETA).
+     * Null, the default, shows how many messages the thread has, which is what a chat wants.
+     */
+    public val trailing: String? = null,
 )

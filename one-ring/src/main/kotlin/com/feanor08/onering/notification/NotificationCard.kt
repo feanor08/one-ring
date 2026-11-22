@@ -56,6 +56,8 @@ import kotlinx.coroutines.launch
 private val CardIconSize = 18.dp
 private val CardIconSpacing = 6.dp
 private val DismissTargetSize = 28.dp
+/** The source's icon on a count-only (rectangular) card: it fills the card's height, down the left side. */
+private val CountOnlyIconSize = 56.dp
 private const val SWIPE_DISMISS_THRESHOLD_FRACTION = 0.32f
 private const val SWIPE_OVERSHOOT_FRACTION = 1.15f
 
@@ -193,7 +195,11 @@ internal fun NotificationCard(
             }
             .padding(horizontal = style.dimensions.horizontalContentPadding, vertical = LocalCardVerticalPadding.current),
     ) {
-        Column(modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = contentAlpha }) {
+        if (countOnly) {
+            CountOnlyCardContent(
+                notification = notification, style = style, interactive = interactive, onDismiss = onDismiss, contentAlpha = contentAlpha,
+            )
+        } else Column(modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = contentAlpha }) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -210,7 +216,7 @@ internal fun NotificationCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        if (style.showSubtitle && !countOnly) {
+                        if (style.showSubtitle) {
                             // The source's thread count sits on the subtitle line, not beside the title: on a narrow circular card it used to squeeze the
                             // title down to an ellipsis, and the sender's name is the one thing that has to stay readable.
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -221,7 +227,7 @@ internal fun NotificationCard(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f, fill = false),
                                 )
-                                sourceStackLabel?.takeIf { !countOnly }?.let { label ->
+                                sourceStackLabel?.let { label ->
                                     Spacer(modifier = Modifier.width(6.dp))
                                     BasicText(
                                         text = label,
@@ -232,20 +238,6 @@ internal fun NotificationCard(
                                 }
                             }
                         }
-                    }
-                }
-                if (countOnly) {
-                    // WhatsApp icon, sender, and at the far right how many messages the thread has: 1, 2, 3
-                    val count = maxOf(1, notification.messages.size)
-                    Box(
-                        modifier = Modifier.align(Alignment.CenterVertically).clip(RoundedCornerShape(10.dp))
-                            .background(notification.accentColor.copy(alpha = 0.22f)).padding(horizontal = 8.dp, vertical = 1.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        BasicText(
-                            text = "$count",
-                            style = TextStyle(color = notification.accentColor, fontSize = 13.sp, fontWeight = FontWeight.Bold),
-                        )
                     }
                 }
                 if (notification.dismissible && style.showDismissButton) {
@@ -273,6 +265,66 @@ internal fun NotificationCard(
                 Spacer(modifier = Modifier.size(4.dp))
                 BasicText(text = timestamp, style = TextStyle(color = style.colors.secondaryText, fontSize = 10.sp))
             }
+        }
+    }
+}
+
+/**
+ * A count-only (rectangular feed) card: the source's icon down the whole left side, and beside it the sender (with how many messages the thread has at the
+ * far right) over the latest message, which gets room for two lines instead of being clipped by the card's edge.
+ */
+@Composable
+private fun CountOnlyCardContent(
+    notification: OneRingNotification,
+    style: OneRingNotificationStyle,
+    interactive: Boolean,
+    onDismiss: () -> Unit,
+    contentAlpha: Float,
+) {
+    val count = maxOf(1, notification.messages.size)
+    Row(
+        modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = contentAlpha },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RenderIcon(icon = notification.icon, tint = notification.accentColor, size = CountOnlyIconSize)
+        Spacer(modifier = Modifier.width(CardIconSpacing + 2.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                BasicText(
+                    text = notification.title,
+                    style = TextStyle(color = style.colors.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                // The label at the far right (the message count, or what the notification's kind says); an empty one draws nothing: the icon says it all.
+                val label = notification.trailing ?: "$count"
+                if (label.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                            .background(notification.accentColor.copy(alpha = 0.22f)).padding(horizontal = 8.dp, vertical = 1.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        BasicText(
+                            text = label,
+                            style = TextStyle(color = notification.accentColor, fontSize = 13.sp, fontWeight = FontWeight.Bold),
+                        )
+                    }
+                }
+            }
+            notification.messages.lastOrNull()?.let { message ->
+                BasicText(
+                    text = message,
+                    style = TextStyle(color = style.colors.body, fontSize = 13.sp, lineHeight = 17.sp),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                )
+            }
+        }
+        if (notification.dismissible && style.showDismissButton) {
+            DismissButton(tint = notification.accentColor, title = notification.title, interactive = interactive, onDismiss = onDismiss)
         }
     }
 }

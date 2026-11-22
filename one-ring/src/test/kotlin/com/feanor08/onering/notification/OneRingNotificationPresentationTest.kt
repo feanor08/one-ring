@@ -33,4 +33,20 @@ class OneRingNotificationPresentationTest {
         assertEquals("2 messages", countSubtitle(n(2)))
         assertEquals("3 messages", countSubtitle(n(3)))
     }
+
+    @Test fun `with a single stack every source's threads are one group, newest first, and one source stays as it is`() {
+        fun n(key: String, source: String, seq: Long) = OneRingNotification(
+            threadKey = key, sourceKey = source, sourceLabel = source, sourceIcon = com.feanor08.onering.OneRingIcon.None, icon = com.feanor08.onering.OneRingIcon.None,
+            accentColor = androidx.compose.ui.graphics.Color.Green, title = key, subtitle = null, messages = listOf("m"), timestampLabel = "", sequence = seq, dismissible = true,
+        )
+        fun g(source: String, vararg threads: OneRingNotification) = OneRingNotificationGroup(source, source, com.feanor08.onering.OneRingIcon.None, threads.toList())
+        val chat = g("WHATSAPP", n("a", "WHATSAPP", 5), n("b", "WHATSAPP", 2))
+        val fault = g("HEMAN", n("f", "HEMAN", 4))
+        val update = g("GENERAL", n("u", "GENERAL", 6))
+        val merged = mergeIntoOneStack(listOf(chat, fault, update))
+        assertEquals(1, merged.size)
+        assertEquals(listOf("u", "a", "f", "b"), merged.single().threads.map { it.threadKey })
+        assertEquals(listOf(chat), mergeIntoOneStack(listOf(chat)))
+        assertEquals(emptyList<OneRingNotificationGroup>(), mergeIntoOneStack(emptyList()))
+    }
 }

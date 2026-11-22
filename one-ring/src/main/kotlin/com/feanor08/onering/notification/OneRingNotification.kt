@@ -31,6 +31,8 @@ public data class OneRingNotification internal constructor(
     public val sequence: Long,
     /** False: no X and no swipe on its card (see [OneRingNotificationPost.dismissible]). */
     public val dismissible: Boolean = true,
+    /** See [OneRingNotificationPost.trailing]. */
+    public val trailing: String? = null,
 )
 
 /**

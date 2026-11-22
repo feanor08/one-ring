@@ -72,10 +72,13 @@ internal fun NotificationFeedList(
     presentation: OneRingNotificationPresentation = OneRingNotificationPresentation.Circular,
     onCardTap: ((sourceKey: String, threadKey: String) -> Unit)? = null,
     onOpen: ((OneRingNotification) -> Unit)? = null,
+    /** Extra space above the first row: a rectangular feed opens it while a new row's banner comes down, so the rows already there flow down with it. */
+    topInset: Dp = 0.dp,
 ) {
     val density = LocalDensity.current
     // Rectangular: absolute sizes, no circular clip, no narrowing; the other values are the style's own. Circular: exactly as before.
     val rect = presentation as? OneRingNotificationPresentation.Rectangular
+    val shownGroups = if (rect?.singleStack == true) mergeIntoOneStack(groups) else groups
     val feedStyle = if (rect == null) style else style.copy(
         dimensions = style.dimensions.copy(
             edgeWidthReductionFraction = 0f, edgeAlphaReductionFraction = rect.edgeAlphaReduction,
@@ -103,10 +106,10 @@ internal fun NotificationFeedList(
             // viewport a card cut in two by the edge reads as a rendering fault, not as "there is more".
             flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(listState),
             modifier = modifier.fillMaxSize().clip(feedShape),
-            contentPadding = PaddingValues(top = topPaddingDp, bottom = bottomPaddingDp),
+            contentPadding = PaddingValues(top = topPaddingDp + topInset, bottom = bottomPaddingDp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            groups.forEachIndexed { groupIndex, group ->
+            shownGroups.forEachIndexed { groupIndex, group ->
                 val itemKey = "group:${group.sourceKey}"
                 item(key = itemKey) {
                     val topSpacing = if (groupIndex == 0) 0.dp else feedStyle.dimensions.groupSpacing
@@ -130,17 +133,17 @@ internal fun NotificationFeedList(
                         onCardTap = onCardTap,
                         onOpen = onOpen,
                         edgeTransformLookup = edgeTransformLookup,
-                        modifier = Modifier.padding(top = topSpacing),
+                        modifier = Modifier.animateItem(fadeInSpec = null).padding(top = topSpacing),
                     )
                 }
             }
         }
     } else {
         Column(
-            modifier = modifier.fillMaxSize().clip(feedShape).padding(top = topPaddingDp, bottom = bottomPaddingDp),
+            modifier = modifier.fillMaxSize().clip(feedShape).padding(top = topPaddingDp + topInset, bottom = bottomPaddingDp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            groups.forEachIndexed { groupIndex, group ->
+            shownGroups.forEachIndexed { groupIndex, group ->
                 val topSpacing = if (groupIndex == 0) 0.dp else feedStyle.dimensions.groupSpacing
                 SourceGroupContent(
                     group = group,
@@ -162,6 +165,17 @@ internal fun NotificationFeedList(
         }
     }
     }
+}
+
+/** One group holding every thread of [groups], newest-updated first (a rectangular feed with `singleStack`): sources stack together instead of one under the other. */
+internal fun mergeIntoOneStack(groups: List<OneRingNotificationGroup>): List<OneRingNotificationGroup> {
+    if (groups.size < 2) return groups
+    return listOf(
+        OneRingNotificationGroup(
+            sourceKey = "all", sourceLabel = "", sourceIcon = groups.first().sourceIcon,
+            threads = groups.flatMap { it.threads }.sortedByDescending { it.sequence },
+        ),
+    )
 }
 
 /**
@@ -199,7 +213,7 @@ private fun SourceGroupContent(
                 onDismiss = { onDismiss(thread.threadKey) },
                 // Rectangular: a tap reports the card (there is no room to expand), and a long one is clipped at the collapsed ceiling.
                 // Otherwise a tap opens what the notification is about, when the host was given a click handler.
-                onTap = if (rectangular && onCardTap != null) ({ onCardTap(group.sourceKey, thread.threadKey) }) else onOpen?.let { open -> { open(thread) } },
+                onTap = if (rectangular && onCardTap != null) ({ onCardTap(thread.sourceKey, thread.threadKey) }) else onOpen?.let { open -> { open(thread) } },
                 tapAccessibilityLabel = if (rectangular && onCardTap != null) null else onOpen?.let { "Open ${thread.title}" },
                 modifier = modifier
                     .width(maxCardWidthDp)
@@ -218,7 +232,7 @@ private fun SourceGroupContent(
                 interactive = interactive,
                 expanded = expandedSourceKey == group.sourceKey,
                 onDismiss = onDismiss,
-                onToggleExpanded = if (rectangular && onCardTap != null) ({ onCardTap(group.sourceKey, group.threads.first().threadKey) })
+                onToggleExpanded = if (rectangular && onCardTap != null) ({ onCardTap(group.threads.first().sourceKey, group.threads.first().threadKey) })
                 else ({ onToggleExpanded(group.sourceKey) }),
                 onOpen = onOpen,
                 edgeTransformLookup = edgeTransformLookup,
