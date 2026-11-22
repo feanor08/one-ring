@@ -138,6 +138,7 @@ internal fun NotificationCard(
                             setOffset = { offsetX = it },
                             onDismiss = onDismiss,
                             onTap = onTap,
+                            dismissEnabled = notification.dismissible,
                         )
                     }
                 } else {
@@ -166,18 +167,18 @@ internal fun NotificationCard(
                 // then check *ancestor* InvisibleToUser to determine
                 // reachability, rather than the description's mere presence
                 // implying interactivity.
-                if (interactive) {
+                if (interactive && notification.dismissible) {
                     customActions = listOf(
                         CustomAccessibilityAction(label = "Dismiss ${notification.title} notification") {
                             onDismiss()
                             true
                         },
                     )
-                    if (onTap != null && tapAccessibilityLabel != null) {
-                        onClick(label = tapAccessibilityLabel) {
-                            onTap()
-                            true
-                        }
+                }
+                if (interactive && onTap != null && tapAccessibilityLabel != null) {
+                    onClick(label = tapAccessibilityLabel) {
+                        onTap()
+                        true
                     }
                 }
             }
@@ -193,39 +194,47 @@ internal fun NotificationCard(
                     RenderIcon(icon = notification.icon, tint = notification.accentColor, size = CardIconSize)
                     Spacer(modifier = Modifier.width(CardIconSpacing))
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
-                            // The title yields space to sourceStackLabel first (weight + ellipsis)
-                            // rather than both competing for room -- on a narrow card, a truncated
-                            // title beats a wrapped label colliding with the subtitle line below it.
-                            BasicText(
-                                text = notification.title,
-                                style = TextStyle(color = style.colors.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
-                            )
-                            sourceStackLabel?.let { label ->
-                                Spacer(modifier = Modifier.width(6.dp))
+                        BasicText(
+                            text = notification.title,
+                            style = TextStyle(color = style.colors.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (style.showSubtitle) {
+                            // The source's thread count sits on the subtitle line, not beside the title: on a narrow circular card it used to squeeze the
+                            // title down to an ellipsis, and the sender's name is the one thing that has to stay readable.
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                                 BasicText(
-                                    text = label,
-                                    style = TextStyle(color = style.colors.secondaryText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                                    text = subtitle,
+                                    style = TextStyle(color = notification.accentColor, fontSize = 12.sp),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
                                 )
+                                sourceStackLabel?.let { label ->
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    BasicText(
+                                        text = label,
+                                        style = TextStyle(color = style.colors.secondaryText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
-                        BasicText(
-                            text = subtitle,
-                            style = TextStyle(color = notification.accentColor, fontSize = 12.sp),
-                        )
                     }
                 }
-                DismissButton(
-                    tint = notification.accentColor,
-                    title = notification.title,
-                    interactive = interactive,
-                    onDismiss = onDismiss,
-                )
+                if (notification.dismissible && style.showDismissButton) {
+                    DismissButton(
+                        tint = notification.accentColor,
+                        title = notification.title,
+                        interactive = interactive,
+                        onDismiss = onDismiss,
+                    )
+                } else if (style.showDismissButton) {
+                    Spacer(modifier = Modifier.size(DismissTargetSize))   // keeps the card's layout: no X for a notification that cannot be dismissed
+                }
             }
             Spacer(modifier = Modifier.size(4.dp))
             Column {
@@ -338,6 +347,7 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
     setOffset: (Float) -> Unit,
     onDismiss: () -> Unit,
     onTap: (() -> Unit)? = null,
+    dismissEnabled: Boolean = true,
 ) {
     val touchSlop = viewConfiguration.touchSlop
     awaitEachGesture {
@@ -388,7 +398,7 @@ private suspend fun PointerInputScope.swipeToDismissGesture(
                 totalDx += dx
                 totalDy += dy
                 when {
-                    abs(totalDx) > touchSlop && abs(totalDx) > abs(totalDy) * SWIPE_OVERSHOOT_FRACTION && totalDx < 0 -> {
+                    abs(totalDx) > touchSlop && abs(totalDx) > abs(totalDy) * SWIPE_OVERSHOOT_FRACTION && totalDx < 0 && dismissEnabled -> {
                         locked = true
                     }
                     abs(totalDy) > touchSlop && abs(totalDy) >= abs(totalDx) -> {

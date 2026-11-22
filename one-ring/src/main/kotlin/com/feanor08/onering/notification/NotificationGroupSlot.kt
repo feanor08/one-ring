@@ -93,6 +93,7 @@ internal fun NotificationGroupSlot(
     expanded: Boolean,
     onDismiss: (String) -> Unit,
     onToggleExpanded: () -> Unit,
+    onOpen: ((OneRingNotification) -> Unit)? = null,
     edgeTransformLookup: GroupEdgeTransformLookup?,
     modifier: Modifier = Modifier,
 ) {
@@ -150,8 +151,17 @@ internal fun NotificationGroupSlot(
                         onDismiss = { onDismiss(thread.threadKey) },
                         sourceStackLabel = if (isFront) "${group.sourceLabel} · $threadCount" else null,
                         contentAlpha = if (isFront) 1f else contentRevealAlpha(progress),
-                        onTap = if (isFront) onToggleExpanded else null,
-                        tapAccessibilityLabel = if (isFront) (if (fullyExpanded) "Collapse" else "Expand") else null,
+                        // With an open handler: the collapsed front card expands the stack, and once it is expanded every card opens what it is about.
+                        onTap = when {
+                            onOpen != null && fullyExpanded -> ({ onOpen(thread) })
+                            isFront -> onToggleExpanded
+                            else -> null
+                        },
+                        tapAccessibilityLabel = when {
+                            onOpen != null && fullyExpanded -> "Open ${thread.title}"
+                            isFront -> if (fullyExpanded) "Collapse" else "Expand"
+                            else -> null
+                        },
                         modifier = Modifier
                             .width(maxCardWidthDp)
                             .heightIn(min = minCardHeightDp)

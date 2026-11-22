@@ -29,6 +29,8 @@ public data class OneRingNotification internal constructor(
     public val messages: List<String>,
     public val timestampLabel: String?,
     public val sequence: Long,
+    /** False: no X and no swipe on its card (see [OneRingNotificationPost.dismissible]). */
+    public val dismissible: Boolean = true,
 )
 
 /**

@@ -71,6 +71,7 @@ internal fun NotificationFeedList(
     modifier: Modifier = Modifier,
     presentation: OneRingNotificationPresentation = OneRingNotificationPresentation.Circular,
     onCardTap: ((sourceKey: String, threadKey: String) -> Unit)? = null,
+    onOpen: ((OneRingNotification) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     // Rectangular: absolute sizes, no circular clip, no narrowing; the other values are the style's own. Circular: exactly as before.
@@ -94,6 +95,9 @@ internal fun NotificationFeedList(
         val listState = rememberLazyListState()
         LazyColumn(
             state = listState,
+            // A flick settles with a source's card (or stack) at the top of the circle instead of stopping half-way through one: on a small circular
+            // viewport a card cut in two by the edge reads as a rendering fault, not as "there is more".
+            flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(listState),
             modifier = modifier.fillMaxSize().clip(feedShape),
             contentPadding = PaddingValues(top = topPaddingDp, bottom = bottomPaddingDp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -120,6 +124,7 @@ internal fun NotificationFeedList(
                         onToggleExpanded = onToggleExpanded,
                         rectangular = rect != null,
                         onCardTap = onCardTap,
+                        onOpen = onOpen,
                         edgeTransformLookup = edgeTransformLookup,
                         modifier = Modifier.padding(top = topSpacing),
                     )
@@ -145,6 +150,7 @@ internal fun NotificationFeedList(
                     onToggleExpanded = onToggleExpanded,
                     rectangular = rect != null,
                     onCardTap = onCardTap,
+                    onOpen = onOpen,
                     edgeTransformLookup = null,
                     modifier = Modifier.padding(top = topSpacing),
                 )
@@ -175,6 +181,7 @@ private fun SourceGroupContent(
     onToggleExpanded: (String) -> Unit,
     rectangular: Boolean,
     onCardTap: ((sourceKey: String, threadKey: String) -> Unit)?,
+    onOpen: ((OneRingNotification) -> Unit)?,
     edgeTransformLookup: GroupEdgeTransformLookup?,
     modifier: Modifier = Modifier,
 ) {
@@ -187,7 +194,9 @@ private fun SourceGroupContent(
                 interactive = interactive,
                 onDismiss = { onDismiss(thread.threadKey) },
                 // Rectangular: a tap reports the card (there is no room to expand), and a long one is clipped at the collapsed ceiling.
-                onTap = if (rectangular && onCardTap != null) ({ onCardTap(group.sourceKey, thread.threadKey) }) else null,
+                // Otherwise a tap opens what the notification is about, when the host was given a click handler.
+                onTap = if (rectangular && onCardTap != null) ({ onCardTap(group.sourceKey, thread.threadKey) }) else onOpen?.let { open -> { open(thread) } },
+                tapAccessibilityLabel = if (rectangular && onCardTap != null) null else onOpen?.let { "Open ${thread.title}" },
                 modifier = modifier
                     .width(maxCardWidthDp)
                     .heightIn(min = minCardHeightDp, max = if (rectangular) collapsedCardMaxHeightDp else Dp.Unspecified)
@@ -207,6 +216,7 @@ private fun SourceGroupContent(
                 onDismiss = onDismiss,
                 onToggleExpanded = if (rectangular && onCardTap != null) ({ onCardTap(group.sourceKey, group.threads.first().threadKey) })
                 else ({ onToggleExpanded(group.sourceKey) }),
+                onOpen = onOpen,
                 edgeTransformLookup = edgeTransformLookup,
                 modifier = modifier,
             )
