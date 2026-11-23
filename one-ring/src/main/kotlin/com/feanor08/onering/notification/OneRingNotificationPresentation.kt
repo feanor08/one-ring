@@ -50,6 +50,11 @@ public sealed interface OneRingNotificationPresentation {
         public val arrivalTravel: Dp = 56.dp,
         /** The slab's opacity while it covers the feed: translucent, but the feed under it still shows the state from before the arrival. */
         public val arrivalAlpha: Float = 0.92f,
+        /**
+         * True: the arrival slab slides in sideways, from beyond the feed's right edge to its place at the top (right to left), instead of down from above it
+         * ([arrivalTravel] is then not used). The feed clips it to its own bounds, so it appears at the edge and never over what is beside the feed.
+         */
+        public val arrivalFromRight: Boolean = false,
     ) : OneRingNotificationPresentation {
         init {
             require(edgeAlphaReduction in 0f..1f) { "edgeAlphaReduction must be in 0..1, was $edgeAlphaReduction" }

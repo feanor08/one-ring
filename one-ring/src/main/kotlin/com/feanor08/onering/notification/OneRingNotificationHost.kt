@@ -1,8 +1,6 @@
 package com.feanor08.onering.notification
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -218,15 +216,18 @@ public fun OneRingNotificationHost(
         // (the push goes back to zero at the same instant: nothing moves). A notification for a row that exists (a card into a stack) pushes nothing.
         val rect = presentation as? OneRingNotificationPresentation.Rectangular
         val arriving = activeArrival
-        val newRowComing = rect != null && arriving != null && !revealed && displayedGroups.none { it.sourceKey == arriving.sourceKey }
-        val pushTargetPx = if (newRowComing && rect != null) with(density) { (rect.cardMaxCollapsedHeight + rect.groupSpacing).toPx() } else 0f
-        val pushPx by animateFloatAsState(
-            targetValue = pushTargetPx,
-            animationSpec = if (pushTargetPx == 0f) snap() else style.motion.arrivalGrow,
-            label = "newRowPush",
-        )
-        // The push is read straight from the target when there is none, so the reveal's frame (new row in, push gone) is one frame, not two.
-        val pushNow = { if (pushTargetPx == 0f) 0f else pushPx }
+        // Where the arriving notification's row is now: -1 none (a new row: every row makes room), 0 already on top (nothing moves), k > 0 (it moves to the top: the
+        // k rows above it make room, one row down each, onto the slot it leaves, and it fades as they cover it).
+        val arrivingIndex = if (rect != null && arriving != null && !revealed) displayedGroups.indexOfFirst { it.sourceKey == arriving.sourceKey } else 0
+        val pushedRows = if (arrivingIndex < 0) Int.MAX_VALUE else arrivingIndex
+        val pushTargetPx = if (pushedRows > 0 && rect != null) with(density) { (rect.cardMaxCollapsedHeight + rect.groupSpacing).toPx() } else 0f
+        // ONE progress drives both the arriving slab and the rows making room for it: the overlay animates this value, the rows read it (in the draw phase, so no
+        // recomposition) in the same frame. They are one motion, not two animations with the same timing.
+        val arrivalGrow = remember(activeArrival?.threadKey, activeArrival?.sequence) { Animatable(0f) }
+        // At the reveal (the new row in, the push gone) the push is exactly 0 in that frame: the target is already 0.
+        val pushNow = { if (pushTargetPx == 0f) 0f else pushTargetPx * arrivalGrow.value }
+        val rowOffsetPx: (Int) -> Float = { row -> if (row < pushedRows) pushNow() else 0f }
+        val rowAlpha: (Int) -> Float = { row -> if (arrivingIndex > 0 && row == arrivingIndex) 1f - arrivalGrow.value else 1f }
 
         Box(
             modifier = Modifier
@@ -234,8 +235,8 @@ public fun OneRingNotificationHost(
                 .graphicsLayer { alpha = feedAlpha.value; clip = true }
                 .semantics { if (!visible) invisibleToUser() },
         ) {
-          // The rows flow down with a translation (not list padding), so the list's own item animations do not fight it; the box above clips what leaves the bottom.
-          Box(Modifier.fillMaxSize().graphicsLayer { translationY = pushNow() }) {
+          // The rows flow down with a translation (not list padding), row by row, so the list's own item animations do not fight it; the box above clips what leaves the bottom.
+          Box(Modifier.fillMaxSize()) {
             NotificationFeedList(
                 groups = displayedGroups,
                 style = style,
@@ -243,6 +244,10 @@ public fun OneRingNotificationHost(
                 interactive = interactive,
                 expandedSourceKey = effectiveExpandedSourceKey,
                 presentation = presentation,
+                // while an arrival plays the rows are moved by the push above; the list's own placement animation would move them a second time when the new row is inserted
+                animatePlacement = activeArrival == null,
+                rowOffsetPx = rowOffsetPx,
+                rowAlpha = rowAlpha,
                 onCardTap = onCardTap,
                 onDismiss = { threadKey -> state.dismiss(threadKey) },
                 onToggleExpanded = { sourceKey ->
@@ -259,6 +264,7 @@ public fun OneRingNotificationHost(
                 style = style,
                 presentation = presentation,
                 animationsEnabled = animationsEnabled,
+                growProgress = arrivalGrow,
                 onReveal = { safeGroups = state.groups; revealed = true },
                 onFinished = {
                     lastAnnouncedSequence = advancedWatermark(notification.sequence)

@@ -1,10 +1,12 @@
 package com.feanor08.onering.notification
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -17,11 +19,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.feanor08.onering.OneRingIcon
 import com.feanor08.onering.internal.RenderIcon
@@ -62,10 +66,14 @@ internal fun NotificationArrivalOverlay(
     style: OneRingNotificationStyle,
     presentation: OneRingNotificationPresentation = OneRingNotificationPresentation.Circular,
     animationsEnabled: Boolean,
+    /**
+     * The arrival's grow progress (0..1). The caller owns it, so whatever moves with the arrival (the rows that make room for it) reads the very same value
+     * in the very same frame and cannot drift from it; this overlay animates it with [OneRingNotificationMotion.arrivalGrow].
+     */
+    growProgress: Animatable<Float, AnimationVector1D>,
     onReveal: () -> Unit,
     onFinished: () -> Unit,
 ) {
-    val growProgress = remember(notification.threadKey, notification.sequence) { Animatable(0f) }
     val iconProgress = remember(notification.threadKey, notification.sequence) { Animatable(0f) }
     val exitAlpha = remember(notification.threadKey, notification.sequence) { Animatable(1f) }
 
@@ -96,7 +104,7 @@ internal fun NotificationArrivalOverlay(
     // Circular: a circle that grows from a point. Rectangular: a translucent slab, as big as the feed, that slides down from above it (the same grow
     // progress, so the same timing); it is translucent, but what shows through is the feed as it was before the arrival, never the new card.
     val shape = if (rect == null) CircleShape else RoundedCornerShape(style.dimensions.cornerRadius)
-    val arrivalModifier = if (rect == null) {
+    fun arrivalModifier(hostWidth: Dp): Modifier = if (rect == null) {
         Modifier.fillMaxSize().graphicsLayer {
             alpha = exitAlpha.value
             scaleX = growProgress.value
@@ -107,9 +115,12 @@ internal fun NotificationArrivalOverlay(
             .border(BorderStroke(5.dp, notification.accentColor), shape)
     } else {
         // The slab is exactly a card (its width and its collapsed height), at the top of the feed: the arrival is never bigger than the messages it announces.
+        // It comes down from above the feed, or (arrivalFromRight) in from beyond its right edge: half the feed plus half the card, so it starts out of sight.
+        val fromSidePx = ((hostWidth + rect.cardWidth) / 2)
         Modifier.width(rect.cardWidth).height(rect.cardMaxCollapsedHeight).graphicsLayer {
             alpha = exitAlpha.value
-            translationY = -rect.arrivalTravel.toPx() * (1f - growProgress.value)
+            if (rect.arrivalFromRight) translationX = fromSidePx.toPx() * (1f - growProgress.value)
+            else translationY = -rect.arrivalTravel.toPx() * (1f - growProgress.value)
         }
             .clip(shape)
             .background(style.colors.arrivalBackground.copy(alpha = rect.arrivalAlpha))
@@ -117,9 +128,9 @@ internal fun NotificationArrivalOverlay(
     }
 
     val iconSize = if (rect == null) ArrivalIconSize else rect.cardMaxCollapsedHeight - 12.dp
-    val slab: @Composable () -> Unit = {
+    val slab: @Composable (Dp) -> Unit = { hostWidth ->
         Box(
-            modifier = arrivalModifier
+            modifier = arrivalModifier(hostWidth)
                 .clearAndSetSemantics {
                     liveRegion = LiveRegionMode.Polite
                     contentDescription = "New notification: ${notification.title}"
@@ -141,5 +152,6 @@ internal fun NotificationArrivalOverlay(
             }
         }
     }
-    if (rect == null) slab() else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) { slab() }
+    if (rect == null) slab(0.dp)
+    else BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.TopCenter) { slab(maxWidth) }
 }

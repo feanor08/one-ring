@@ -49,4 +49,11 @@ class OneRingNotificationPresentationTest {
         assertEquals(listOf(chat), mergeIntoOneStack(listOf(chat)))
         assertEquals(emptyList<OneRingNotificationGroup>(), mergeIntoOneStack(emptyList()))
     }
+
+    @Test
+    fun `the arrival comes down from above unless it is asked to come in from the right`() {
+        val base = OneRingNotificationPresentation.Rectangular(cardWidth = 176.dp, cardMinHeight = 80.dp, cardMaxCollapsedHeight = 80.dp)
+        assertEquals(false, base.arrivalFromRight)
+        assertEquals(true, base.copy(arrivalFromRight = true).arrivalFromRight)
+    }
 }

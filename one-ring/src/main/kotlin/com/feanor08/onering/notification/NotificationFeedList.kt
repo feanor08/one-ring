@@ -1,5 +1,9 @@
 package com.feanor08.onering.notification
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -74,6 +78,12 @@ internal fun NotificationFeedList(
     onOpen: ((OneRingNotification) -> Unit)? = null,
     /** Extra space above the first row: a rectangular feed opens it while a new row's banner comes down, so the rows already there flow down with it. */
     topInset: Dp = 0.dp,
+    /** False while an arrival moves the rows itself: an item then jumps to its new place instead of gliding there a second time. */
+    animatePlacement: Boolean = true,
+    /** How far row [index] is moved down right now (px), read while drawing: the rows that make room for an arriving notification. */
+    rowOffsetPx: (Int) -> Float = { 0f },
+    /** Row [index]'s opacity right now, read while drawing: the row an arrival is about to replace at the top fades out as the rows above slide onto its place. */
+    rowAlpha: (Int) -> Float = { 1f },
 ) {
     val density = LocalDensity.current
     // Rectangular: absolute sizes, no circular clip, no narrowing; the other values are the style's own. Circular: exactly as before.
@@ -133,7 +143,10 @@ internal fun NotificationFeedList(
                         onCardTap = onCardTap,
                         onOpen = onOpen,
                         edgeTransformLookup = edgeTransformLookup,
-                        modifier = Modifier.animateItem(fadeInSpec = null).padding(top = topSpacing),
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = null,
+                            placementSpec = if (animatePlacement) spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset.VisibilityThreshold) else null,
+                        ).graphicsLayer { translationY = rowOffsetPx(groupIndex); alpha = rowAlpha(groupIndex) }.padding(top = topSpacing),
                     )
                 }
             }
@@ -159,7 +172,7 @@ internal fun NotificationFeedList(
                     onCardTap = onCardTap,
                     onOpen = onOpen,
                     edgeTransformLookup = null,
-                    modifier = Modifier.padding(top = topSpacing),
+                    modifier = Modifier.graphicsLayer { translationY = rowOffsetPx(groupIndex); alpha = rowAlpha(groupIndex) }.padding(top = topSpacing),
                 )
             }
         }
